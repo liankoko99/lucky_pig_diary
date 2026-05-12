@@ -1,393 +1,360 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#B4E082">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>lucky pig pig</title>
-    
-    <script type="importmap">
-        {
-            "imports": {
-                "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
-                "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
-                "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
-            }
-        }
-    </script>
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { LucidePenTool, ChevronLeft, ChevronRight, ArrowLeft, Save, Share2 } from 'lucide-react';
 
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
-        :root { --ink: #1A1A1A; --bg: #B4E082; }
-        body { background-color: var(--bg); font-family: 'Zen Maru Gothic', sans-serif; color: var(--ink); margin: 0; transition: background-color 0.5s ease; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-        textarea, input { -webkit-user-select: auto; user-select: auto; }
-        .hand-drawn-border { border: 2px solid var(--ink); border-radius: 20px 10px 20px 10px; }
-        .noise-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.1; z-index: 9999; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); }
-        .calendar-grid-button { border: 2px solid var(--ink); box-shadow: 2px 2px 0px var(--ink); transition: all 0.2s ease; }
-        .calendar-grid-button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0px var(--ink); }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        .animate-slide-in { animation: slideIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
-        .textarea-shadow { box-shadow: 3px 3px 0px var(--ink); }
-        .textarea-shadow:focus { box-shadow: 5px 5px 0px var(--ink); }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+// ============================================================
+// ✅ 已加入你提供的實時 Firebase 設定資訊
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
+  authDomain: "lucky-pig-diary.firebaseapp.com",
+  projectId: "lucky-pig-diary",
+  storageBucket: "lucky-pig-diary.firebasestorage.app",
+  messagingSenderId: "483484047694",
+  appId: "1:483484047694:web:a2ae027087971638d6e61f",
+  measurementId: "G-E9J7NT6JG5"
+};
 
-    <script type="text/babel" data-type="module">
-        import { initializeApp } from 'firebase/app';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = "lucky-pig-diary";
 
-        const { useState, useEffect } = React;
+// 貓貓插畫組件 - 根據截圖重新繪製
+const CatGallery = () => {
+  const colors = {
+    catBlack: '#333333',
+    catWhite: '#FFFFFF',
+    catOrange: '#E89D45',
+    catGrey: '#888888',
+    ink: '#1A1A1A'
+  };
 
-        // ============================================================
-        // ✅ 已經加入你提供的實時 Firebase 設定資訊
-        // ============================================================
-        const firebaseConfig = {
-            apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
-            authDomain: "lucky-pig-diary.firebaseapp.com",
-            projectId: "lucky-pig-diary",
-            storageBucket: "lucky-pig-diary.firebasestorage.app",
-            messagingSenderId: "483484047694",
-            appId: "1:483484047694:web:a2ae027087971638d6e61f",
-            measurementId: "G-E9J7NT6JG5"
-        };
-        // ============================================================
+  return (
+    <div className="mt-8 border-t border-dashed border-[#1A1A1A]/20 pt-6">
+      <div className="text-center text-[10px] font-bold text-[#1A1A1A]/40 mb-6 tracking-widest uppercase">LUCKY CAT CAT</div>
+      <div className="grid grid-cols-3 gap-6 opacity-90 px-4">
+        {/* 1. 黑貓 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 100 80" className="w-14 h-10">
+            <path d="M20,60 Q20,30 50,30 T80,60" fill={colors.catBlack} />
+            <path d="M35,35 L30,15 L45,30 Z" fill={colors.catBlack} />
+            <path d="M65,35 L70,15 L55,30 Z" fill={colors.catBlack} />
+            <circle cx="40" cy="45" r="1.5" fill="white" />
+            <circle cx="60" cy="45" r="1.5" fill="white" />
+          </svg>
+        </div>
+        {/* 2. 三花貓 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 100 80" className="w-14 h-10">
+            <path d="M20,60 Q40,30 60,30 T100,60" fill={colors.catWhite} />
+            <path d="M70,30 Q85,35 95,50 L100,60 L60,60 Z" fill={colors.catOrange} />
+            <path d="M30,35 L25,15 L40,30 Z" fill={colors.catBlack} />
+            <path d="M55,32 L60,12 L65,30 Z" fill={colors.catOrange} />
+            <circle cx="35" cy="45" r="1.5" fill={colors.ink} />
+            <circle cx="55" cy="45" r="1.5" fill={colors.ink} />
+          </svg>
+        </div>
+        {/* 3. 白貓 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 100 80" className="w-14 h-10">
+            <path d="M10,60 Q30,40 50,40 T90,60" fill={colors.catWhite} />
+            <path d="M35,42 L32,25 L45,40 Z" fill={colors.catWhite} />
+            <path d="M65,42 L68,25 L55,40 Z" fill={colors.catWhite} />
+            <circle cx="38" cy="48" r="1" fill={colors.ink} />
+            <circle cx="62" cy="48" r="1" fill={colors.ink} />
+          </svg>
+        </div>
+        {/* 4. 黑貓 2 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 100 80" className="w-14 h-10">
+            <path d="M20,60 Q20,35 50,35 T80,60" fill={colors.catBlack} />
+            <path d="M35,38 L30,18 L45,35 Z" fill={colors.catBlack} />
+            <path d="M65,38 L70,18 L55,35 Z" fill={colors.catBlack} />
+            <circle cx="50" cy="50" r="3.5" fill="white" />
+          </svg>
+        </div>
+        {/* 5. 灰色頭套貓 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 100 80" className="w-14 h-10">
+            <path d="M20,60 Q20,35 50,35 T80,60" fill={colors.catGrey} />
+            <rect x="25" y="25" width="50" height="20" rx="5" fill="rgba(255,255,255,0.4)" stroke={colors.ink} strokeWidth="1" />
+            <path d="M45,45 L40,30 L55,45 Z" fill={colors.catGrey} />
+            <path d="M55,45 L60,30 L65,45 Z" fill={colors.catGrey} />
+          </svg>
+        </div>
+        {/* 6. 橘貓 */}
+        <div className="flex justify-center">
+          <svg viewBox="0 0 120 80" className="w-16 h-10">
+            <path d="M20,60 Q40,35 60,35 T100,60" fill={colors.catOrange} />
+            <path d="M35,38 L30,18 L45,35 Z" fill={colors.catOrange} />
+            <path d="M65,38 L70,18 L55,35 Z" fill={colors.catOrange} />
+            <circle cx="45" cy="50" r="1.5" fill={colors.ink} />
+            <circle cx="65" cy="50" r="1.5" fill={colors.ink} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-        // 初始化 Firebase
-        let app, auth, db;
-        const isConfigValid = firebaseConfig.apiKey && firebaseConfig.apiKey !== "";
-        if (isConfigValid) {
-            try {
-                app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-            } catch (e) { console.error("Firebase init failed", e); }
-        }
+export default function App() {
+  const [view, setView] = useState('calendar'); // 'calendar', 'entry', 'share'
+  const [user, setUser] = useState(null);
+  const [roomId, setRoomId] = useState(() => localStorage.getItem('gratitude_room_id') || '');
+  const [entries, setEntries] = useState(() => {
+    const saved = localStorage.getItem('gratitude_v3_data');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState('');
 
-        // 圖示組件
-        const PenToolIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>;
-        const ChevronLeftIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>;
-        const ChevronRightIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>;
-        const ArrowLeftIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
-        const SaveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
-        const ShareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>;
+  // Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.error("Auth error", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
 
-        const COLORS = { catBlack: '#333333', catWhite: '#FFFFFF', catOrange: '#E89D45', catGrey: '#888888', ink: '#1A1A1A' };
+  // Sync
+  useEffect(() => {
+    if (!user || !roomId) return;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_diaries', roomId);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const cloudData = docSnap.data().entries || {};
+        setEntries(cloudData);
+        localStorage.setItem('gratitude_v3_data', JSON.stringify(cloudData));
+      }
+    });
+    return () => unsubscribe();
+  }, [user, roomId]);
 
-        const ImageCats = () => (
-            <div className="relative mt-8">
-                <div className="grid grid-cols-3 gap-4 opacity-90 relative z-10">
-                    {/* 1. 黑色坐姿貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 100 80" className="w-16 h-12">
-                            <path d="M20,60 Q20,30 50,30 T80,60 Z" fill={COLORS.catBlack} />
-                            <circle cx="40" cy="45" r="1.5" fill="white" />
-                            <circle cx="60" cy="45" r="1.5" fill="white" />
-                        </svg>
-                    </div>
-                    {/* 2. 三花貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 120 80" className="w-20 h-12">
-                            <path d="M20,60 Q40,30 60,30 T100,60 Z" fill={COLORS.catWhite} />
-                            <path d="M70,30 Q85,35 95,50 L100,60 L60,60 Z" fill={COLORS.catOrange} />
-                            <path d="M25,45 Q35,35 45,40" fill={COLORS.catBlack} />
-                            <circle cx="35" cy="45" r="1.5" fill={COLORS.ink} />
-                            <circle cx="55" cy="45" r="1.5" fill={COLORS.ink} />
-                        </svg>
-                    </div>
-                    {/* 3. 白色趴趴貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 100 80" className="w-16 h-12">
-                            <path d="M10,60 Q30,40 50,40 T90,60 Z" fill={COLORS.catWhite} />
-                            <circle cx="38" cy="48" r="1" fill={COLORS.ink} />
-                            <circle cx="62" cy="48" r="1" fill={COLORS.ink} />
-                        </svg>
-                    </div>
-                    {/* 4. 黑色偷看貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 100 80" className="w-16 h-12">
-                            <path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catBlack} />
-                        </svg>
-                    </div>
-                    {/* 5. 戴頭套的灰貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 100 80" className="w-16 h-12">
-                            <path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catGrey} />
-                            <path d="M15,40 L10,10 L90,10 L85,40" fill="rgba(255,255,255,0.4)" stroke={COLORS.ink} strokeWidth="1" />
-                        </svg>
-                    </div>
-                    {/* 6. 橘色虎斑貓 */}
-                    <div className="flex justify-center">
-                        <svg viewBox="0 0 120 80" className="w-20 h-12">
-                            <path d="M20,60 Q40,35 60,35 T100,60 Z" fill={COLORS.catOrange} />
-                        </svg>
-                    </div>
-                </div>
+  const handleSave = async (data) => {
+    const newEntries = { ...entries, [selectedDate]: data };
+    setEntries(newEntries);
+    localStorage.setItem('gratitude_v3_data', JSON.stringify(newEntries));
+
+    if (roomId && user) {
+      try {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_diaries', roomId);
+        await setDoc(docRef, { entries: newEntries }, { merge: true });
+      } catch (err) {
+        console.error("Save error", err);
+      }
+    }
+  };
+
+  const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+
+  return (
+    <div className="min-h-screen bg-[#B4E082] font-['Zen_Maru_Gothic'] p-4 flex justify-center selection:bg-[#FCF5CA]">
+      <div className="w-full max-w-lg bg-[#B4E082] border-[3px] border-[#1A1A1A] rounded-[30px] p-6 shadow-[8px_8px_0px_rgba(0,0,0,0.15)] flex flex-col min-h-[90vh] relative overflow-hidden">
+        
+        {/* Header */}
+        <header className="flex justify-between items-start mb-6">
+          <div className="flex items-center gap-2">
+            <div className="bg-[#1A1A1A] p-1.5 rounded-full text-white">
+              <LucidePenTool size={14} />
             </div>
-        );
+            <div>
+              <span className="text-[10px] font-bold uppercase opacity-40 block tracking-widest">LUCKY PIG PIG</span>
+              <h1 className="text-2xl font-bold text-[#1A1A1A]">
+                {view === 'calendar' ? '感恩日記' : view === 'share' ? '連線設定' : '今日小確幸'}
+              </h1>
+            </div>
+          </div>
+          <button 
+            onClick={() => setView('share')}
+            className={`px-3 py-1.5 rounded-full border-2 border-[#1A1A1A] font-bold text-[10px] shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 active:shadow-none transition-all ${roomId ? 'bg-[#FCF5CA]' : 'bg-white'}`}
+          >
+             {roomId ? '已連線' : '邀請朋友'}
+          </button>
+        </header>
 
-        function CalendarView({ entries, currentDate, setCurrentDate, onSelectDate }) {
-            const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const firstDay = new Date(year, month, 1).getDay();
-            const days = [];
-            for (let i = 0; i < firstDay; i++) days.push(null);
-            for (let d = 1; d <= daysInMonth; d++) days.push(new Date(year, month, d));
-
-            return (
-                <div className="animate-fade-in px-2">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-[#1A1A1A]">{year} <span className="text-[#1A1A1A]/40 mx-0.5">/</span> {monthNames[month]}</h2>
-                        <div className="flex gap-3">
-                            <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="w-10 h-10 border-2 border-[#1A1A1A] bg-white rounded-full flex items-center justify-center shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5"><ChevronLeftIcon /></button>
-                            <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="w-10 h-10 border-2 border-[#1A1A1A] bg-white rounded-full flex items-center justify-center shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5"><ChevronRightIcon /></button>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-7 gap-2">
-                        {['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d} className="text-center text-[11px] font-bold text-[#1A1A1A]/60 mb-2">{d}</div>)}
-                        {days.map((date, idx) => {
-                            if (!date) return <div key={`empty-${idx}`} />;
-                            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                            const dayData = entries[dateStr] || {};
-                            const hasData = (dayData.shushu?.some(i => i.trim() !== '')) || (dayData.gaogao?.some(i => i.trim() !== ''));
-
-                            return (
-                                <button
-                                    key={dateStr}
-                                    onClick={() => onSelectDate(dateStr)}
-                                    className={`aspect-square rounded-lg flex items-center justify-center text-sm font-bold calendar-grid-button ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/40 text-[#1A1A1A] border-white/40'}`}
-                                    style={{ borderRadius: `${Math.random() * 6 + 4}px` }}
-                                >{date.getDate()}</button>
-                            );
-                        })}
-                    </div>
+        <main className="flex-1 overflow-y-auto custom-scroll pr-1">
+          {view === 'calendar' && (
+            <div className="animate-in fade-in duration-500">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold">{currentDate.getFullYear()} <span className="opacity-30">/</span> {monthNames[currentDate.getMonth()]}</h2>
+                <div className="flex gap-2">
+                  <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 bg-white border-2 border-[#1A1A1A] rounded-full shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5"><ChevronLeft size={20}/></button>
+                  <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 bg-white border-2 border-[#1A1A1A] rounded-full shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5"><ChevronRight size={20}/></button>
                 </div>
-            );
-        }
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-center text-[10px] font-bold opacity-40">{d}</div>)}
+                {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                  const d = i + 1;
+                  const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                  const dayEntries = entries[dateStr] || {};
+                  const hasData = (dayEntries.shushu?.some(t => t.trim()) || dayEntries.gaogao?.some(t => t.trim()));
+                  return (
+                    <button 
+                      key={d} 
+                      onClick={() => { setSelectedDate(dateStr); setView('entry'); }}
+                      className={`aspect-square rounded-xl border-2 border-[#1A1A1A] font-bold text-sm shadow-[2px_2px_0px_#1A1A1A] transition-all active:translate-y-0.5 active:shadow-none ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/40 text-[#1A1A1A]'}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-        function EntryView({ date, existingData, onBack, onSave }) {
-            const defaultData = { shushu: ['', '', ''], gaogao: ['', '', ''] };
-            const [data, setData] = useState(existingData || defaultData);
-            const [saved, setSaved] = useState(false);
-
-            useEffect(() => { if (existingData) setData(existingData); }, [existingData]);
-
-            const handleTextChange = (user, idx, val) => {
-                const newData = { ...data };
-                newData[user][idx] = val;
-                setData(newData);
-                setSaved(false);
-            };
-
-            const handleSaveClick = () => {
-                onSave(data);
-                setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
-            };
-
-            return (
-                <div className="animate-slide-in">
-                    <div className="mb-4">
-                        <button onClick={onBack} className="flex items-center gap-1 text-sm font-bold text-[#1A1A1A]/70 py-2"><ArrowLeftIcon /> 返回月曆</button>
-                    </div>
-
-                    <div className="mb-4">
-                        <div className="text-[11px] font-black text-[#1A1A1A] bg-white px-2 py-1 rounded shadow-sm inline-block mb-3">
-                            {date.replace(/-/g, '.')}
-                        </div>
-                        <h2 className="text-xl font-bold text-[#1A1A1A]">今天感恩的3件事：</h2>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 custom-scroll overflow-y-auto max-h-[55vh] pr-1 pb-4">
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-1 mb-2 font-bold text-[#1A1A1A]/60">🌲 樹樹</div>
-                            {[0, 1, 2].map(i => (
-                                <textarea
-                                    key={`shushu-${i}`}
-                                    value={data.shushu[i]}
-                                    onChange={(e) => handleTextChange('shushu', i, e.target.value)}
-                                    placeholder="紀錄一點小確幸..."
-                                    className="w-full bg-white border-2 border-[#1A1A1A] p-3 rounded-xl focus:outline-none textarea-shadow text-sm min-h-[70px] resize-none transition-all"
-                                />
-                            ))}
-                        </div>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-1 mb-2 font-bold text-[#1A1A1A]/60">☁️ 高高</div>
-                            {[0, 1, 2].map(i => (
-                                <textarea
-                                    key={`gaogao-${i}`}
-                                    value={data.gaogao[i]}
-                                    onChange={(e) => handleTextChange('gaogao', i, e.target.value)}
-                                    placeholder="紀錄一點小確幸..."
-                                    className="w-full bg-white border-2 border-[#1A1A1A] p-3 rounded-xl focus:outline-none textarea-shadow text-sm min-h-[70px] resize-none transition-all"
-                                />
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="mt-4">
-                        <button 
-                            onClick={handleSaveClick} 
-                            className="w-full py-4 rounded-xl border-2 border-[#1A1A1A] font-bold text-lg flex items-center justify-center gap-2 transition-all bg-white shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 active:shadow-none"
-                            style={{ backgroundColor: '#DDF0C5' }}
-                        >
-                            <SaveIcon /> {saved ? '已儲存！' : '儲存3份小確幸'}
-                        </button>
-                    </div>
-
-                    <div className="mt-6 border-t border-dashed border-[#1A1A1A]/20 pt-6">
-                        <div className="text-center text-[10px] font-bold text-[#1A1A1A]/40 mb-4 tracking-widest uppercase">lucky cat cat</div>
-                        <ImageCats />
-                    </div>
+          {view === 'entry' && (
+            <div className="animate-in slide-in-from-right duration-300">
+              <button onClick={() => setView('calendar')} className="flex items-center gap-1 text-sm font-bold opacity-60 mb-4 hover:opacity-100">
+                <ArrowLeft size={16} /> 返回月曆
+              </button>
+              
+              <div className="mb-6">
+                <div className="inline-block bg-white px-2 py-1 rounded-md border border-[#1A1A1A] text-[10px] font-bold mb-2 shadow-[1px_1px_0px_#1A1A1A]">
+                  {selectedDate.replace(/-/g, '.')}
                 </div>
-            );
-        }
+                <h2 className="text-xl font-bold">今天感恩的 3 件事：</h2>
+              </div>
 
-        function ShareView({ roomId, setRoomId, onBack, isConnected }) {
-            const [inputCode, setInputCode] = useState('');
-            const handleCreate = () => {
-                const code = Math.random().toString(36).substring(2, 7).toUpperCase();
-                setRoomId(code);
-                localStorage.setItem('gratitude_room_id', code);
-            };
-            const handleJoin = () => {
-                if (inputCode.trim().length >= 4) {
-                    const code = inputCode.trim().toUpperCase();
-                    setRoomId(code);
-                    localStorage.setItem('gratitude_room_id', code);
-                }
-            };
-            const handleDisconnect = () => { setRoomId(''); localStorage.removeItem('gratitude_room_id'); };
-
-            return (
-                <div className="animate-slide-in pb-12 text-center">
-                    <button onClick={onBack} className="flex items-center gap-1 text-sm font-bold mb-8 text-[#1A1A1A]/70 py-2"><ArrowLeftIcon /> 返回</button>
-                    <div className="mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-white border-4 border-[#1A1A1A] rounded-full shadow-[4px_4px_0px_#1A1A1A] mb-4"><ShareIcon /></div>
-                        <h2 className="text-xl font-bold mb-2">連線設定</h2>
-                        <p className="text-sm font-bold opacity-70">輸入同一個分享碼，即可同步看到對方的日記。</p>
-                        {!isConnected && roomId && (
-                            <div className="mt-4 p-3 bg-red-100 border-2 border-red-400 text-red-700 rounded-lg text-xs font-bold text-left">
-                                ⚠️ 提示：Firebase 連線中... 如果長時間未顯示，請確認你已開啟 Firestore 讀寫規則。
-                            </div>
-                        )}
-                    </div>
-                    {roomId ? (
-                        <div className="bg-white border-2 border-[#1A1A1A] p-6 rounded-2xl shadow-[6px_6px_0px_#1A1A1A]">
-                            <div className="text-sm font-bold opacity-50 mb-2">連線分享碼：</div>
-                            <div className="text-4xl font-black text-[#E89D45] tracking-widest mb-6">{roomId}</div>
-                            <button onClick={handleDisconnect} className="w-full py-3 rounded-xl border-2 border-[#1A1A1A] font-bold bg-white active:translate-y-1">斷開連線</button>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <button onClick={handleCreate} className="w-full py-4 rounded-xl border-2 border-[#1A1A1A] font-bold text-lg bg-white shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1">創建分享碼</button>
-                            <div className="flex items-center justify-center gap-4 py-2"><div className="h-[2px] bg-[#1A1A1A]/20 flex-1"></div><span className="text-xs font-bold opacity-30">OR</span><div className="h-[2px] bg-[#1A1A1A]/20 flex-1"></div></div>
-                            <div className="space-y-3">
-                                <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="輸入分享碼" className="w-full bg-white border-2 border-[#1A1A1A] p-4 rounded-xl focus:outline-none shadow-[3px_3px_0px_#1A1A1A] font-bold uppercase" />
-                                <button onClick={handleJoin} className="w-full py-4 rounded-xl border-2 border-[#1A1A1A] font-bold text-lg bg-[#FCF5CA] shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1">加入連線</button>
-                            </div>
-                        </div>
-                    )}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {/* 樹樹 Column */}
+                <div className="space-y-4">
+                  <div className="text-center font-bold text-sm opacity-60 mb-2">🌲 樹樹</div>
+                  {[0, 1, 2].map(i => (
+                    <textarea 
+                      key={`shushu-${i}`}
+                      value={entries[selectedDate]?.shushu?.[i] || ''}
+                      onChange={(e) => {
+                        const newEntries = { ...entries };
+                        if (!newEntries[selectedDate]) newEntries[selectedDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                        if (!newEntries[selectedDate].shushu) newEntries[selectedDate].shushu = ['', '', ''];
+                        newEntries[selectedDate].shushu[i] = e.target.value;
+                        setEntries(newEntries);
+                      }}
+                      placeholder="紀錄一點小確幸..."
+                      className="w-full bg-white border-2 border-[#1A1A1A] rounded-xl p-3 text-xs min-h-[80px] focus:outline-none shadow-[3px_3px_0px_#1A1A1A] focus:shadow-[5px_5px_0px_#1A1A1A] transition-all"
+                    />
+                  ))}
                 </div>
-            );
-        }
-
-        function App() {
-            const [view, setView] = useState('calendar');
-            const [user, setUser] = useState(null);
-            const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
-            const [roomId, setRoomId] = useState(() => localStorage.getItem('gratitude_room_id') || '');
-            const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('shushu_gaogao_entries_v3');
-                return saved ? JSON.parse(saved) : {};
-            });
-            const [currentDate, setCurrentDate] = useState(new Date());
-            const [selectedDate, setSelectedDate] = useState(() => {
-                const d = new Date();
-                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            });
-
-            useEffect(() => {
-                if (isConfigValid && auth) {
-                    signInAnonymously(auth).then(() => setIsFirebaseConnected(true)).catch(() => setIsFirebaseConnected(false));
-                    const unsubscribe = onAuthStateChanged(auth, setUser);
-                    return () => unsubscribe();
-                }
-            }, []);
-
-            useEffect(() => {
-                if (!user || !roomId || !isFirebaseConnected || !db) return;
-                const docRef = doc(db, 'shared_diaries', roomId);
-                const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const cloudData = docSnap.data().entries || {};
-                        setEntries(cloudData);
-                        localStorage.setItem('shushu_gaogao_entries_v3', JSON.stringify(cloudData));
-                    }
-                });
-                return () => unsubscribe();
-            }, [user, roomId, isFirebaseConnected]);
-
-            const handleSave = async (data) => {
-                const newEntries = { ...entries, [selectedDate]: data };
-                setEntries(newEntries);
-                localStorage.setItem('shushu_gaogao_entries_v3', JSON.stringify(newEntries));
-                if (roomId && user && isFirebaseConnected && db) {
-                    try {
-                        await setDoc(doc(db, 'shared_diaries', roomId), { entries: newEntries }, { merge: true });
-                    } catch(e) { console.error("Save to cloud failed", e); }
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex justify-center p-3 sm:p-8 relative">
-                    <div className="noise-overlay" />
-                    <div className="w-full max-w-lg min-h-[92vh] hand-drawn-border relative overflow-hidden flex flex-col p-5 bg-[#B4E082] shadow-[10px_10px_0px_rgba(0,0,0,0.15)]">
-                        <header className="mb-6 relative z-10 flex justify-between items-start">
-                            <div className="flex items-center gap-2">
-                                <div className="p-1.5 bg-[#1A1A1A] rounded-full text-white"><PenToolIcon /></div>
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase opacity-50 block">lucky pig pig</span>
-                                    <h1 className="text-2xl font-bold text-[#1A1A1A] leading-tight">
-                                        {view === 'calendar' ? '感恩日記' : view === 'share' ? '連線設定' : '今日小確幸'}
-                                    </h1>
-                                </div>
-                            </div>
-                            <button onClick={() => setView('share')} className={`px-3 py-1.5 rounded-full border-2 border-[#1A1A1A] font-bold text-[10px] shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 ${roomId ? 'bg-[#FCF5CA]' : 'bg-white'}`}>
-                                {roomId ? '已連線' : '邀請朋友'}
-                            </button>
-                        </header>
-                        <main className="flex-1 z-10 overflow-hidden">
-                            {view === 'calendar' ? (
-                                <CalendarView entries={entries} currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDate={(d) => { setSelectedDate(d); setView('entry'); }} />
-                            ) : view === 'share' ? (
-                                <ShareView roomId={roomId} setRoomId={setRoomId} isConnected={isFirebaseConnected} onBack={() => setView('calendar')} />
-                            ) : (
-                                <EntryView date={selectedDate} existingData={entries[selectedDate]} onBack={() => setView('calendar')} onSave={handleSave} />
-                            )}
-                        </main>
-                    </div>
+                {/* 高高 Column */}
+                <div className="space-y-4">
+                  <div className="text-center font-bold text-sm opacity-60 mb-2">☁️ 高高</div>
+                  {[0, 1, 2].map(i => (
+                    <textarea 
+                      key={`gaogao-${i}`}
+                      value={entries[selectedDate]?.gaogao?.[i] || ''}
+                      onChange={(e) => {
+                        const newEntries = { ...entries };
+                        if (!newEntries[selectedDate]) newEntries[selectedDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                        if (!newEntries[selectedDate].gaogao) newEntries[selectedDate].gaogao = ['', '', ''];
+                        newEntries[selectedDate].gaogao[i] = e.target.value;
+                        setEntries(newEntries);
+                      }}
+                      placeholder="紀錄一點小確幸..."
+                      className="w-full bg-white border-2 border-[#1A1A1A] rounded-xl p-3 text-xs min-h-[80px] focus:outline-none shadow-[3px_3px_0px_#1A1A1A] focus:shadow-[5px_5px_0px_#1A1A1A] transition-all"
+                    />
+                  ))}
                 </div>
-            );
-        }
+              </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+              <button 
+                onClick={() => handleSave(entries[selectedDate])}
+                className="w-full py-4 bg-[#DDF0C5] border-2 border-[#1A1A1A] rounded-xl font-bold flex items-center justify-center gap-2 shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 active:shadow-none transition-all mb-8"
+              >
+                <Save size={18} /> 儲存 3 份小確幸
+              </button>
+
+              <CatGallery />
+            </div>
+          )}
+
+          {view === 'share' && (
+            <div className="animate-in slide-in-from-right duration-300">
+              <button onClick={() => setView('calendar')} className="flex items-center gap-1 text-sm font-bold opacity-60 mb-8 hover:opacity-100">
+                <ArrowLeft size={16} /> 返回月曆
+              </button>
+              
+              <div className="text-center mb-10">
+                <div className="w-16 h-16 bg-white border-4 border-[#1A1A1A] rounded-full flex items-center justify-center mx-auto mb-4 shadow-[4px_4px_0px_#1A1A1A]">
+                  <Share2 size={32} />
+                </div>
+                <h2 className="text-xl font-bold mb-2">交換日記連線</h2>
+                <p className="text-xs opacity-60">輸入分享碼，同步樹樹與高高的內容</p>
+              </div>
+
+              {!roomId ? (
+                <div className="space-y-6">
+                  <button 
+                    onClick={() => {
+                      const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+                      setRoomId(code);
+                      localStorage.setItem('gratitude_room_id', code);
+                    }}
+                    className="w-full py-4 bg-white border-2 border-[#1A1A1A] rounded-xl font-bold shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 active:shadow-none transition-all"
+                  >
+                    創建專屬分享碼
+                  </button>
+                  <div className="flex items-center gap-4 text-xs opacity-30 font-bold uppercase tracking-widest">
+                    <div className="flex-1 h-px bg-[#1A1A1A]" />
+                    或者
+                    <div className="flex-1 h-px bg-[#1A1A1A]" />
+                  </div>
+                  <div className="space-y-2">
+                    <input 
+                      type="text" 
+                      placeholder="輸入對方的分享碼"
+                      id="roomInput"
+                      className="w-full bg-white border-2 border-[#1A1A1A] rounded-xl p-4 text-center font-bold tracking-widest uppercase focus:outline-none shadow-[3px_3px_0px_#1A1A1A]"
+                    />
+                    <button 
+                      onClick={() => {
+                        const code = document.getElementById('roomInput').value.trim().toUpperCase();
+                        if (code) {
+                          setRoomId(code);
+                          localStorage.setItem('gratitude_room_id', code);
+                        }
+                      }}
+                      className="w-full py-4 bg-[#FCF5CA] border-2 border-[#1A1A1A] rounded-xl font-bold shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      加入日記
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white border-2 border-[#1A1A1A] p-6 rounded-2xl shadow-[6px_6px_0px_#1A1A1A] text-center">
+                  <span className="text-[10px] font-bold opacity-40 uppercase block mb-2">目前分享碼</span>
+                  <div className="text-4xl font-black text-[#E89D45] tracking-widest mb-6">{roomId}</div>
+                  <button 
+                    onClick={() => {
+                      setRoomId('');
+                      localStorage.removeItem('gratitude_room_id');
+                    }}
+                    className="text-xs font-bold underline opacity-40 hover:opacity-100"
+                  >
+                    斷開連線
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+      
+      <style>{`
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+      `}</style>
+    </div>
+  );
+}
