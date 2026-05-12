@@ -55,7 +55,6 @@
             z-index: 9999;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
         }
-
         .calendar-grid-button {
             border: 2px solid var(--ink);
             box-shadow: 2px 2px 0px var(--ink);
@@ -76,7 +75,6 @@
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 
-        /* 保護貓貓比例防止崩壞 */
         .cat-item-box { 
             width: 58px; 
             height: 44px;
@@ -96,11 +94,10 @@
     <script type="text/babel" data-type="module">
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // Firebase 實時設定資訊
         const firebaseConfig = {
             apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
             authDomain: "lucky-pig-diary.firebaseapp.com",
@@ -110,19 +107,16 @@
             appId: "1:483484047694:web:a2ae027087971638d6e61f",
             measurementId: "G-E9J7NT6JG5"
         };
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 精修貓貓繪圖 - 根據截圖還原細節
         const CatGallery = () => {
             const colors = { black: "#333333", white: "#FFFFFF", orange: "#E89D45", grey: "#888888", ink: "#1A1A1A" };
             return (
                 <div className="mt-8 border-t border-dashed border-[#1A1A1A]/20 pt-6 pb-4">
                     <div className="text-center text-[10px] font-bold text-[#1A1A1A]/40 mb-6 tracking-widest uppercase">LUCKY CAT CAT</div>
                     <div className="grid grid-cols-3 gap-y-6 gap-x-1 px-1 justify-items-center">
-                        {/* 1. 黑貓 */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M25,65 Q25,35 50,35 T75,65" fill={colors.black} />
@@ -132,7 +126,6 @@
                                 <circle cx="57" cy="50" r="1.5" fill="white" />
                             </svg>
                         </div>
-                        {/* 2. 三花貓 */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M20,65 Q20,35 50,35 T80,65" fill={colors.white} />
@@ -144,7 +137,6 @@
                                 <circle cx="60" cy="52" r="1.5" fill={colors.ink} />
                             </svg>
                         </div>
-                        {/* 3. 白貓 (趴趴版) */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M15,65 Q35,45 50,45 T85,65" fill={colors.white} />
@@ -155,7 +147,6 @@
                                 <circle cx="62" cy="53" r="1" fill={colors.ink} />
                             </svg>
                         </div>
-                        {/* 4. 黑貓 (圓眼睛) */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M25,65 Q25,40 50,40 T75,65" fill={colors.black} />
@@ -164,7 +155,6 @@
                                 <circle cx="50" cy="55" r="4" fill="white" />
                             </svg>
                         </div>
-                        {/* 5. 灰色頭套貓 */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M25,65 Q25,40 50,40 T75,65" fill={colors.grey} />
@@ -173,7 +163,6 @@
                                 <path d="M55,50 L60,35 L65,50 Z" fill={colors.grey} />
                             </svg>
                         </div>
-                        {/* 6. 橘色虎斑貓 */}
                         <div className="cat-item-box">
                             <svg viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet" className="cat-svg-core">
                                 <path d="M25,65 Q25,40 50,40 T75,65" fill={colors.orange} />
@@ -188,49 +177,65 @@
                 </div>
             );
         };
-
         function App() {
             const [view, setView] = useState('calendar');
             const [user, setUser] = useState(null);
-            const [syncStatus, setSyncStatus] = useState('connecting'); // connecting, linked, error
+            const [syncStatus, setSyncStatus] = useState('connecting'); 
+            const [lastSyncTime, setLastSyncTime] = useState(null);
             
-            // 強制使用固定的同步 ID，確保手機電腦永遠對應同一個資料夾
-            const ROOM_ID = "LUCKY_PIG_SYNC_ROOM"; 
+            // 核心同步保險箱：這是一個全球唯一的代碼，只要不改這行，所有設備都會看到同一份內容
+            const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_V3_FINAL"; 
             
             const [entries, setEntries] = useState({});
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
 
+            // 1. 啟動時先匿名登入 Firebase
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
-                    console.error(err);
+                    console.error("Auth failed:", err);
                     setSyncStatus('error');
                 });
                 onAuthStateChanged(auth, (u) => {
                     setUser(u);
-                    if(u) setSyncStatus('linked');
                 });
             }, []);
 
+            // 2. 登入成功後，立刻「強制抓取」一次雲端資料，並開啟「實時監聽」
             useEffect(() => {
                 if (!user) return;
+                
                 const docRef = doc(db, 'shared_diaries', ROOM_ID);
+                
+                // A. 優先嘗試獲取現有數據（解決新瀏覽器打開空白問題）
+                getDoc(docRef).then((snap) => {
+                    if (docSnap.exists()) {
+                        setEntries(snap.data().entries || {});
+                    }
+                    setSyncStatus('linked');
+                });
+
+                // B. 開啟實時監聽（解決兩台設備同步延遲問題）
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        setEntries(docSnap.data().entries || {});
+                        const data = docSnap.data().entries || {};
+                        setEntries(data);
+                        setLastSyncTime(new Date().toLocaleTimeString());
                     }
                 }, (err) => {
                     console.error("Sync failed:", err);
                     setSyncStatus('error');
                 });
+                
                 return () => unsubscribe();
             }, [user]);
 
             const handleSave = async (data) => {
                 const newEntries = { ...entries, [selectedDate]: data };
-                setEntries(newEntries);
+                setEntries(newEntries); // 頁面即時更新
                 if (user) {
                     try {
+                        // 推送到雲端
                         await setDoc(doc(db, 'shared_diaries', ROOM_ID), { entries: newEntries }, { merge: true });
                     } catch (e) {
                         console.error("Save error:", e);
@@ -239,7 +244,6 @@
             };
 
             const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
-
             return (
                 <div className="min-h-screen p-3 flex justify-center selection:bg-[#FCF5CA] relative">
                     <div className="noise-overlay" />
@@ -256,7 +260,7 @@
                                 </div>
                             </div>
                             <div className={`px-3 py-1 text-[9px] font-bold rounded-full border-2 border-[#1A1A1A] shadow-[2px_2px_0px_#1A1A1A] ${syncStatus === 'linked' ? 'bg-[#FCF5CA]' : 'bg-red-100'}`}>
-                                {syncStatus === 'linked' ? '● 自動同步中' : '連線異常'}
+                                {syncStatus === 'linked' ? '● 雲端連線中' : '連線異常'}
                             </div>
                         </header>
 
@@ -276,13 +280,17 @@
                                         {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                                             const d = i + 1;
                                             const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                                            const hasData = entries[ds] && (entries[ds].shushu?.some(v => v.trim()) || entries[ds].gaogao?.some(v => v.trim()));
+                                            const dayData = entries[ds];
+                                            const hasData = dayData && (dayData.shushu?.some(v => v.trim()) || dayData.gaogao?.some(v => v.trim()));
                                             return (
                                                 <button key={d} onClick={() => { setSelectedDate(ds); setView('entry'); }} className={`aspect-square rounded-xl border-2 border-[#1A1A1A] font-bold text-sm shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/40'}`}>{d}</button>
                                             );
                                         })}
                                     </div>
-                                    <div className="mt-8 text-center"><span className="text-[10px] font-bold opacity-30 italic">樹樹與高高專屬同步日記</span></div>
+                                    <div className="mt-8 text-center">
+                                        <div className="text-[10px] font-bold opacity-30 italic mb-1">樹樹與高高專屬自動同步日記</div>
+                                        {lastSyncTime && <div className="text-[8px] opacity-20 uppercase tracking-tighter">最後同步: {lastSyncTime}</div>}
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="animate-fade-in">
@@ -340,6 +348,7 @@
                                 </div>
                             )}
                         </main>
+                        <div className="absolute bottom-2 right-4 text-[8px] opacity-10 uppercase tracking-tighter">v1.1.0-cloud-priority</div>
                     </div>
                 </div>
             );
