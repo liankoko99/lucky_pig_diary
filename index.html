@@ -90,12 +90,51 @@
         const ImageCats = () => (
             <div className="relative mt-8">
                 <div className="grid grid-cols-3 gap-4 opacity-90 relative z-10">
-                    <div className="flex justify-center"><svg viewBox="0 0 100 80" className="w-16 h-12"><path d="M20,60 Q20,30 50,30 T80,60 Z" fill={COLORS.catBlack} /><circle cx="40" cy="45" r="1.5" fill="white" /><circle cx="60" cy="45" r="1.5" fill="white" /></svg></div>
-                    <div className="flex justify-center"><svg viewBox="0 0 120 80" className="w-20 h-12"><path d="M20,60 Q40,30 60,30 T100,60 Z" fill={COLORS.catWhite} /><path d="M70,30 Q85,35 95,50 L100,60 L60,60 Z" fill={COLORS.catOrange} /><circle cx="35" cy="45" r="1.5" fill={COLORS.ink} /></svg></div>
-                    <div className="flex justify-center"><svg viewBox="0 0 100 80" className="w-16 h-12"><path d="M10,60 Q30,40 50,40 T90,60 Z" fill={COLORS.catWhite} /><circle cx="38" cy="48" r="1" fill={COLORS.ink} /></svg></div>
-                    <div className="flex justify-center"><svg viewBox="0 0 100 80" className="w-16 h-12"><path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catBlack} /></svg></div>
-                    <div className="flex justify-center"><svg viewBox="0 0 100 80" className="w-16 h-12"><path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catGrey} /></svg></div>
-                    <div className="flex justify-center"><svg viewBox="0 0 120 80" className="w-20 h-12"><path d="M20,60 Q40,35 60,35 T100,60 Z" fill={COLORS.catOrange} /></svg></div>
+                    {/* 1. 黑色坐姿貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 100 80" className="w-16 h-12">
+                            <path d="M20,60 Q20,30 50,30 T80,60 Z" fill={COLORS.catBlack} />
+                            <circle cx="40" cy="45" r="1.5" fill="white" />
+                            <circle cx="60" cy="45" r="1.5" fill="white" />
+                        </svg>
+                    </div>
+                    {/* 2. 三花貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 120 80" className="w-20 h-12">
+                            <path d="M20,60 Q40,30 60,30 T100,60 Z" fill={COLORS.catWhite} />
+                            <path d="M70,30 Q85,35 95,50 L100,60 L60,60 Z" fill={COLORS.catOrange} />
+                            <path d="M25,45 Q35,35 45,40" fill={COLORS.catBlack} />
+                            <circle cx="35" cy="45" r="1.5" fill={COLORS.ink} />
+                            <circle cx="55" cy="45" r="1.5" fill={COLORS.ink} />
+                        </svg>
+                    </div>
+                    {/* 3. 白色趴趴貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 100 80" className="w-16 h-12">
+                            <path d="M10,60 Q30,40 50,40 T90,60 Z" fill={COLORS.catWhite} />
+                            <circle cx="38" cy="48" r="1" fill={COLORS.ink} />
+                            <circle cx="62" cy="48" r="1" fill={COLORS.ink} />
+                        </svg>
+                    </div>
+                    {/* 4. 黑色偷看貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 100 80" className="w-16 h-12">
+                            <path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catBlack} />
+                        </svg>
+                    </div>
+                    {/* 5. 戴頭套的灰貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 100 80" className="w-16 h-12">
+                            <path d="M20,60 Q20,35 50,35 T80,60 Z" fill={COLORS.catGrey} />
+                            <path d="M15,40 L10,10 L90,10 L85,40" fill="rgba(255,255,255,0.4)" stroke={COLORS.ink} strokeWidth="1" />
+                        </svg>
+                    </div>
+                    {/* 6. 橘色虎斑貓 */}
+                    <div className="flex justify-center">
+                        <svg viewBox="0 0 120 80" className="w-20 h-12">
+                            <path d="M20,60 Q40,35 60,35 T100,60 Z" fill={COLORS.catOrange} />
+                        </svg>
+                    </div>
                 </div>
             </div>
         );
