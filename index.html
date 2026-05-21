@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>lucky pig pig</title>
     
+    <!-- Firebase Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -18,6 +19,7 @@
         }
     </script>
 
+    <!-- 外部載入庫 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -99,7 +101,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         // Firebase 實時設定資訊
         const firebaseConfig = {
@@ -210,15 +212,26 @@
             const [syncStatus, setSyncStatus] = useState('connecting'); 
             const [errorMsg, setErrorMsg] = useState('');
             
-            // 💡 新增按鈕儲存狀態：'idle'、'saving'、'saved'
-            const [saveState, setSaveState] = useState('idle'); 
+            const [saveState, setSaveState] = useState('idle'); // 'idle'、'saving'、'saved'
 
-            // ⚠️ 核心房間 ID：確保之前的日記紀錄絕對不會遺失
+            // 💡 新增變更追蹤狀態：確保只儲存使用者真正修改過的那一側
+            const [shushuChanged, setShushuChanged] = useState(false);
+            const [gaogaoChanged, setGaogaoChanged] = useState(false);
+
             const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL"; 
             
             const [entries, setEntries] = useState({});
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
+
+            // 使用 Ref 隨時追蹤最新的 selectedDate，避免 onSnapshot 不斷重新訂閱而導致輸入卡頓
+            const selectedDateRef = useRef(selectedDate);
+            useEffect(() => {
+                selectedDateRef.current = selectedDate;
+                // 切換日期時，重置修改狀態
+                setShushuChanged(false);
+                setGaogaoChanged(false);
+            }, [selectedDate]);
 
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
@@ -236,7 +249,32 @@
                 const docRef = doc(db, 'shared_diaries', ROOM_ID);
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        setEntries(docSnap.data().entries || {});
+                        const cloudEntries = docSnap.data().entries || {};
+                        
+                        setEntries(prevEntries => {
+                            // 💡 實時輸入保護邏輯：
+                            // 檢查目前光標（Focus）是否停留在樹樹或高高的輸入框中。
+                            // 如果使用者正在打字，我們不以雲端舊資料覆蓋他正在編輯的區域。
+                            const activeEl = document.activeElement;
+                            const isEditingShushu = activeEl && activeEl.id && activeEl.id.startsWith('shushu-');
+                            const isEditingGaogao = activeEl && activeEl.id && activeEl.id.startsWith('gaogao-');
+                            const currentSelDate = selectedDateRef.current;
+
+                            const merged = { ...cloudEntries };
+
+                            if (currentSelDate) {
+                                if (!merged[currentSelDate]) {
+                                    merged[currentSelDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                                }
+                                if (isEditingShushu && prevEntries[currentSelDate]?.shushu) {
+                                    merged[currentSelDate].shushu = prevEntries[currentSelDate].shushu;
+                                }
+                                if (isEditingGaogao && prevEntries[currentSelDate]?.gaogao) {
+                                    merged[currentSelDate].gaogao = prevEntries[currentSelDate].gaogao;
+                                }
+                            }
+                            return merged;
+                        });
                     }
                 }, (err) => {
                     setSyncStatus('error');
@@ -247,15 +285,32 @@
 
             const handleSave = async (data) => {
                 setSaveState('saving');
-                const newEntries = { ...entries, [selectedDate]: data };
-                setEntries(newEntries);
+                
+                // 💡 精密局部更新：構建只包含被修改側的寫入路徑
+                const updatePayload = {};
+                
+                if (shushuChanged) {
+                    updatePayload[`entries.${selectedDate}.shushu`] = data.shushu || ['', '', ''];
+                }
+                if (gaogaoChanged) {
+                    updatePayload[`entries.${selectedDate}.gaogao`] = data.gaogao || ['', '', ''];
+                }
+                
+                // 如果兩邊都沒改（例如剛進去直接按儲存），就預設全部儲存
+                if (!shushuChanged && !gaogaoChanged) {
+                    updatePayload[`entries.${selectedDate}.shushu`] = data.shushu || ['', '', ''];
+                    updatePayload[`entries.${selectedDate}.gaogao`] = data.gaogao || ['', '', ''];
+                }
                 
                 if (user) {
                     try { 
-                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), { entries: newEntries }, { merge: true }); 
-                        // 儲存成功後切換成已儲存狀態 (按鈕變白色)
+                        // 使用帶有點路徑的 setDoc + merge 實現精準儲存，絕不覆蓋對方的欄位
+                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), updatePayload, { merge: true }); 
+                        
                         setSaveState('saved');
-                        // 2 秒後自動變回原本的模樣
+                        setShushuChanged(false);
+                        setGaogaoChanged(false);
+                        
                         setTimeout(() => {
                             setSaveState('idle');
                         }, 2000);
@@ -323,11 +378,41 @@
                                     <div className="grid grid-cols-2 gap-3 mb-6">
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">🌲 樹樹</div>
-                                            {[0, 1, 2].map(i => <textarea key={i} value={entries[selectedDate]?.shushu?.[i] || ''} onChange={(e) => { const ne = { ...entries }; if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; ne[selectedDate].shushu[i] = e.target.value; setEntries(ne); }} placeholder="記錄一點小確幸～" className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" />)}
+                                            {[0, 1, 2].map(i => (
+                                                <textarea 
+                                                    key={i} 
+                                                    id={`shushu-${i}`} // 💡 加上唯一 ID，用於精準偵測當前編輯位置
+                                                    value={entries[selectedDate]?.shushu?.[i] || ''} 
+                                                    onChange={(e) => { 
+                                                        const ne = { ...entries }; 
+                                                        if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
+                                                        ne[selectedDate].shushu[i] = e.target.value; 
+                                                        setEntries(ne); 
+                                                        setShushuChanged(true); // 標記樹樹內容已被修改
+                                                    }} 
+                                                    placeholder="記錄一點小確幸～" 
+                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
+                                                />
+                                            ))}
                                         </div>
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">☁️ 高高</div>
-                                            {[0, 1, 2].map(i => <textarea key={i} value={entries[selectedDate]?.gaogao?.[i] || ''} onChange={(e) => { const ne = { ...entries }; if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; ne[selectedDate].gaogao[i] = e.target.value; setEntries(ne); }} placeholder="記錄一點小確幸～" className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" />)}
+                                            {[0, 1, 2].map(i => (
+                                                <textarea 
+                                                    key={i} 
+                                                    id={`gaogao-${i}`} // 💡 加上唯一 ID，用於精準偵測當前編輯位置
+                                                    value={entries[selectedDate]?.gaogao?.[i] || ''} 
+                                                    onChange={(e) => { 
+                                                        const ne = { ...entries }; 
+                                                        if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
+                                                        ne[selectedDate].gaogao[i] = e.target.value; 
+                                                        setEntries(ne); 
+                                                        setGaogaoChanged(true); // 標記高高內容已被修改
+                                                    }} 
+                                                    placeholder="記錄一點小確幸～" 
+                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
+                                                />
+                                            ))}
                                         </div>
                                     </div>
                                     
