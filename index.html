@@ -214,7 +214,7 @@
             
             const [saveState, setSaveState] = useState('idle'); // 'idle'、'saving'、'saved'
 
-            // 💡 新增變更追蹤狀態：確保只儲存使用者真正修改過的那一側
+            // 追蹤編輯狀態
             const [shushuChanged, setShushuChanged] = useState(false);
             const [gaogaoChanged, setGaogaoChanged] = useState(false);
 
@@ -224,11 +224,9 @@
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
 
-            // 使用 Ref 隨時追蹤最新的 selectedDate，避免 onSnapshot 不斷重新訂閱而導致輸入卡頓
             const selectedDateRef = useRef(selectedDate);
             useEffect(() => {
                 selectedDateRef.current = selectedDate;
-                // 切換日期時，重置修改狀態
                 setShushuChanged(false);
                 setGaogaoChanged(false);
             }, [selectedDate]);
@@ -252,9 +250,6 @@
                         const cloudEntries = docSnap.data().entries || {};
                         
                         setEntries(prevEntries => {
-                            // 💡 實時輸入保護邏輯：
-                            // 檢查目前光標（Focus）是否停留在樹樹或高高的輸入框中。
-                            // 如果使用者正在打字，我們不以雲端舊資料覆蓋他正在編輯的區域。
                             const activeEl = document.activeElement;
                             const isEditingShushu = activeEl && activeEl.id && activeEl.id.startsWith('shushu-');
                             const isEditingGaogao = activeEl && activeEl.id && activeEl.id.startsWith('gaogao-');
@@ -286,25 +281,33 @@
             const handleSave = async (data) => {
                 setSaveState('saving');
                 
-                // 💡 精密局部更新：構建只包含被修改側的寫入路徑
-                const updatePayload = {};
+                // 安全防禦：如果傳入的 data 是空的，預設給予空矩陣結構
+                const safeData = data || { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                
+                // 💡 正確的巢狀物件合併結構，不使用點路徑，避免寫入失敗
+                const updatePayload = {
+                    entries: {
+                        [selectedDate]: {}
+                    }
+                };
                 
                 if (shushuChanged) {
-                    updatePayload[`entries.${selectedDate}.shushu`] = data.shushu || ['', '', ''];
+                    updatePayload.entries[selectedDate].shushu = safeData.shushu || ['', '', ''];
                 }
                 if (gaogaoChanged) {
-                    updatePayload[`entries.${selectedDate}.gaogao`] = data.gaogao || ['', '', ''];
+                    updatePayload.entries[selectedDate].gaogao = safeData.gaogao || ['', '', ''];
                 }
                 
-                // 如果兩邊都沒改（例如剛進去直接按儲存），就預設全部儲存
+                // 如果兩側都沒修改（例如直接打開按儲存），則兩邊都提交
                 if (!shushuChanged && !gaogaoChanged) {
-                    updatePayload[`entries.${selectedDate}.shushu`] = data.shushu || ['', '', ''];
-                    updatePayload[`entries.${selectedDate}.gaogao`] = data.gaogao || ['', '', ''];
+                    updatePayload.entries[selectedDate].shushu = safeData.shushu || ['', '', ''];
+                    updatePayload.entries[selectedDate].gaogao = safeData.gaogao || ['', '', ''];
                 }
                 
                 if (user) {
                     try { 
-                        // 使用帶有點路徑的 setDoc + merge 實現精準儲存，絕不覆蓋對方的欄位
+                        // 使用正確的巢狀結構 + merge: true。
+                        // 這會精確合併當天日期的 shushu/gaogao 欄位，同時 100% 保留其他所有日期。
                         await setDoc(doc(db, 'shared_diaries', ROOM_ID), updatePayload, { merge: true }); 
                         
                         setSaveState('saved');
@@ -381,14 +384,14 @@
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={i} 
-                                                    id={`shushu-${i}`} // 💡 加上唯一 ID，用於精準偵測當前編輯位置
+                                                    id={`shushu-${i}`} 
                                                     value={entries[selectedDate]?.shushu?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
                                                         if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
                                                         ne[selectedDate].shushu[i] = e.target.value; 
                                                         setEntries(ne); 
-                                                        setShushuChanged(true); // 標記樹樹內容已被修改
+                                                        setShushuChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -400,14 +403,14 @@
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={i} 
-                                                    id={`gaogao-${i}`} // 💡 加上唯一 ID，用於精準偵測當前編輯位置
+                                                    id={`gaogao-${i}`} 
                                                     value={entries[selectedDate]?.gaogao?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
                                                         if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
                                                         ne[selectedDate].gaogao[i] = e.target.value; 
                                                         setEntries(ne); 
-                                                        setGaogaoChanged(true); // 標記高高內容已被修改
+                                                        setGaogaoChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -416,7 +419,7 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 儲存按鈕：具備變色和文字切換動畫 */}
+                                    {/* 儲存按鈕 */}
                                     <button 
                                         onClick={() => handleSave(entries[selectedDate])} 
                                         disabled={saveState === 'saving'}
