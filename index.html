@@ -98,7 +98,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect } = React;
 
         // Firebase 實時設定資訊
         const firebaseConfig = {
@@ -113,6 +113,15 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+
+        // 資料安全轉換器：確保陣列永遠有 3 個位置，不讓 undefined 引發崩潰
+        const getSafeArray = (arr) => {
+            return [
+                arr?.[0] || '',
+                arr?.[1] || '',
+                arr?.[2] || ''
+            ];
+        };
 
         // 4 隻平躺狗狗插畫
         const DogGallery = () => {
@@ -206,23 +215,19 @@
             
             const [saveState, setSaveState] = useState('idle');
 
+            // 💡 分離架構：雲端資料與本地輸入框徹底分開
+            const [cloudEntries, setCloudEntries] = useState({});
+            const [localShushu, setLocalShushu] = useState(['', '', '']);
+            const [localGaogao, setLocalGaogao] = useState(['', '', '']);
             const [shushuChanged, setShushuChanged] = useState(false);
             const [gaogaoChanged, setGaogaoChanged] = useState(false);
 
             const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL"; 
             
-            const [entries, setEntries] = useState({});
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
 
-            // 使用 Ref 追蹤目前畫面停留在哪一天，確保 Snapshot 觸發時能準確判斷
-            const selectedDateRef = useRef(selectedDate);
-            useEffect(() => {
-                selectedDateRef.current = selectedDate;
-                setShushuChanged(false);
-                setGaogaoChanged(false);
-            }, [selectedDate]);
-
+            // 初始化驗證
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
                     setSyncStatus('error');
@@ -234,40 +239,13 @@
                 });
             }, []);
 
-            // 💡 核心防護機制：監聽雲端資料時，避開正在輸入的區塊
+            // 1. 監聽 Firebase 雲端資料 (只存進 cloudEntries)
             useEffect(() => {
                 if (!user) return;
                 const docRef = doc(db, 'shared_diaries', ROOM_ID);
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        const cloudData = docSnap.data().entries || {};
-                        
-                        setEntries(prevEntries => {
-                            // 獲取目前使用者的滑鼠/游標停在哪個格子裡
-                            const activeEl = document.activeElement;
-                            const isEditingShushu = activeEl && activeEl.id && activeEl.id.startsWith('shushu-');
-                            const isEditingGaogao = activeEl && activeEl.id && activeEl.id.startsWith('gaogao-');
-                            const currentSelDate = selectedDateRef.current;
-
-                            // 深拷貝雲端資料
-                            const merged = JSON.parse(JSON.stringify(cloudData));
-
-                            // 如果使用者正在查看某一天，且正在打字
-                            if (currentSelDate && prevEntries[currentSelDate]) {
-                                if (!merged[currentSelDate]) {
-                                    merged[currentSelDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
-                                }
-                                // 如果正在編輯樹樹，就保留本地樹樹的內容（不要被雲端覆蓋）
-                                if (isEditingShushu) {
-                                    merged[currentSelDate].shushu = prevEntries[currentSelDate].shushu;
-                                }
-                                // 如果正在編輯高高，就保留本地高高的內容（不要被雲端覆蓋）
-                                if (isEditingGaogao) {
-                                    merged[currentSelDate].gaogao = prevEntries[currentSelDate].gaogao;
-                                }
-                            }
-                            return merged;
-                        });
+                        setCloudEntries(docSnap.data().entries || {});
                     }
                 }, (err) => {
                     setSyncStatus('error');
@@ -276,21 +254,47 @@
                 return () => unsubscribe();
             }, [user]);
 
+            // 2. 當切換日期時，載入雲端資料到本地輸入框
+            useEffect(() => {
+                if (selectedDate) {
+                    setShushuChanged(false);
+                    setGaogaoChanged(false);
+                    const dayData = cloudEntries[selectedDate] || {};
+                    // 強制轉為安全陣列格式
+                    setLocalShushu(getSafeArray(dayData.shushu));
+                    setLocalGaogao(getSafeArray(dayData.gaogao));
+                }
+            }, [selectedDate]);
+
+            // 3. 雲端資料更新時，安全地同步到畫面 (保護正在輸入的區塊)
+            useEffect(() => {
+                if (!selectedDate) return;
+                const dayData = cloudEntries[selectedDate] || {};
+                
+                // 如果樹樹沒有在輸入，才更新樹樹的畫面
+                if (!shushuChanged) {
+                    setLocalShushu(getSafeArray(dayData.shushu));
+                }
+                // 如果高高沒有在輸入，才更新高高的畫面
+                if (!gaogaoChanged) {
+                    setLocalGaogao(getSafeArray(dayData.gaogao));
+                }
+            }, [cloudEntries]);
+
+            // 💡 儲存邏輯：只上傳真正有改變的資料
             const handleSave = async () => {
                 setSaveState('saving');
                 
-                const currentData = entries[selectedDate] || {};
-                const safeShushu = currentData.shushu || ['', '', ''];
-                const safeGaogao = currentData.gaogao || ['', '', ''];
-
                 const dateUpdatePayload = {};
                 
-                if (shushuChanged) dateUpdatePayload.shushu = safeShushu;
-                if (gaogaoChanged) dateUpdatePayload.gaogao = safeGaogao;
+                // 只有被改變的一方，才會被放入更新包
+                if (shushuChanged) dateUpdatePayload.shushu = localShushu;
+                if (gaogaoChanged) dateUpdatePayload.gaogao = localGaogao;
                 
+                // 如果兩邊都沒改變（防呆點擊），確保兩邊資料安全覆蓋回去
                 if (!shushuChanged && !gaogaoChanged) {
-                    dateUpdatePayload.shushu = safeShushu;
-                    dateUpdatePayload.gaogao = safeGaogao;
+                    dateUpdatePayload.shushu = localShushu;
+                    dateUpdatePayload.gaogao = localGaogao;
                 }
 
                 const finalPayload = {
@@ -353,12 +357,12 @@
                                         {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                                             const d = i + 1;
                                             const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                                            const dayData = entries[ds];
+                                            const dayData = cloudEntries[ds];
                                             const hasData = dayData && (dayData.shushu?.some(v => v.trim()) || dayData.gaogao?.some(v => v.trim()));
                                             return <button key={d} onClick={() => { setSelectedDate(ds); setView('entry'); }} className={`aspect-square rounded-xl border-2 border-[#1A1A1A] font-bold text-sm shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/60 text-[#1A1A1A]'}`}>{d}</button>;
                                         })}
                                     </div>
-                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (雙人防覆蓋版)</span>
+                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (雙人防干擾極致版)</span>
                                 </div>
                             ) : (
                                 <div className="animate-fade-in">
@@ -368,44 +372,36 @@
                                         <h2 className="text-lg font-bold text-[#1A1A1A]">今天感恩的 3 件事：</h2>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 mb-6">
+                                        {/* 樹樹區塊 */}
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">🌲 樹樹</div>
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={`shushu-${i}`} 
-                                                    id={`shushu-${i}`} 
-                                                    value={entries[selectedDate]?.shushu?.[i] || ''} 
+                                                    value={localShushu[i]} 
                                                     onChange={(e) => { 
-                                                        const ne = { ...entries }; 
-                                                        const currentDay = ne[selectedDate] ? { ...ne[selectedDate] } : { shushu: ['','',''], gaogao: ['','',''] };
-                                                        const currentShushu = currentDay.shushu ? [...currentDay.shushu] : ['','',''];
-                                                        currentShushu[i] = e.target.value;
-                                                        currentDay.shushu = currentShushu;
-                                                        ne[selectedDate] = currentDay;
-                                                        setEntries(ne); 
-                                                        setShushuChanged(true); 
+                                                        const next = [...localShushu];
+                                                        next[i] = e.target.value;
+                                                        setLocalShushu(next);
+                                                        setShushuChanged(true); // 鎖定防護罩，不被雲端覆蓋
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
                                                 />
                                             ))}
                                         </div>
+                                        {/* 高高區塊 */}
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">☁️ 高高</div>
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={`gaogao-${i}`} 
-                                                    id={`gaogao-${i}`} 
-                                                    value={entries[selectedDate]?.gaogao?.[i] || ''} 
+                                                    value={localGaogao[i]} 
                                                     onChange={(e) => { 
-                                                        const ne = { ...entries }; 
-                                                        const currentDay = ne[selectedDate] ? { ...ne[selectedDate] } : { shushu: ['','',''], gaogao: ['','',''] };
-                                                        const currentGaogao = currentDay.gaogao ? [...currentDay.gaogao] : ['','',''];
-                                                        currentGaogao[i] = e.target.value;
-                                                        currentDay.gaogao = currentGaogao;
-                                                        ne[selectedDate] = currentDay;
-                                                        setEntries(ne); 
-                                                        setGaogaoChanged(true); 
+                                                        const next = [...localGaogao];
+                                                        next[i] = e.target.value;
+                                                        setLocalGaogao(next);
+                                                        setGaogaoChanged(true); // 鎖定防護罩，不被雲端覆蓋
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -414,7 +410,7 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 儲存按鈕：保留變色特效 */}
+                                    {/* 儲存按鈕 */}
                                     <button 
                                         onClick={handleSave} 
                                         disabled={saveState === 'saving'}
