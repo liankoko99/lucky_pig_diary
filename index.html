@@ -8,7 +8,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>lucky pig pig</title>
     
-    <!-- Firebase Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -19,7 +18,6 @@
         }
     </script>
 
-    <!-- 外部載入庫 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -79,7 +77,6 @@
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 
-        /* 狗狗比例保護框 */
         .dog-item-box { 
             width: 100%; 
             height: 55px;
@@ -110,8 +107,7 @@
             projectId: "lucky-pig-diary",
             storageBucket: "lucky-pig-diary.firebasestorage.app",
             messagingSenderId: "483484047694",
-            appId: "1:483484047694:web:a2ae027087971638d6e61f",
-            measurementId: "G-E9J7NT6JG5"
+            appId: "1:483484047694:web:a2ae027087971638d6e61f"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -126,7 +122,6 @@
                 <div className="mt-8 border-t border-dashed border-[#1A1A1A]/20 pt-6 pb-2">
                     <div className="text-center text-[10px] font-bold text-[#1A1A1A]/40 mb-4 tracking-widest uppercase">LUCKY DOG DOG</div>
                     <div className="grid grid-cols-4 gap-2 px-1 justify-items-center">
-                        {/* 1. 啡色小狗 */}
                         <div className="dog-item-box">
                             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
                                 <rect x="35" y="40" width="30" height="45" rx="15" fill="#A57C65" />
@@ -145,7 +140,6 @@
                                 <circle cx="60" cy="38" r="3" fill={blush} opacity="0.6" />
                             </svg>
                         </div>
-                        {/* 2. 白色小狗 */}
                         <div className="dog-item-box">
                             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
                                 <rect x="35" y="40" width="30" height="45" rx="15" fill="#FFFFFF" />
@@ -163,7 +157,6 @@
                                 <circle cx="60" cy="38" r="3" fill={blush} opacity="0.8" />
                             </svg>
                         </div>
-                        {/* 3. 黑白斑點狗 */}
                         <div className="dog-item-box">
                             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
                                 <rect x="35" y="40" width="30" height="45" rx="15" fill="#FFFFFF" />
@@ -182,7 +175,6 @@
                                 <circle cx="40" cy="38" r="3" fill={blush} opacity="0.8" />
                             </svg>
                         </div>
-                        {/* 4. 淺啡色小狗 */}
                         <div className="dog-item-box">
                             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
                                 <rect x="35" y="40" width="30" height="45" rx="15" fill="#E3C5A0" />
@@ -214,22 +206,16 @@
             
             const [saveState, setSaveState] = useState('idle'); // 'idle'、'saving'、'saved'
 
-            // 追蹤編輯狀態
+            // 💡 獨立追蹤樹樹與高高是否被修改過
             const [shushuChanged, setShushuChanged] = useState(false);
             const [gaogaoChanged, setGaogaoChanged] = useState(false);
 
+            // ⚠️ 房間 ID 保持不變，保留所有過往紀錄
             const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL"; 
             
             const [entries, setEntries] = useState({});
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
-
-            const selectedDateRef = useRef(selectedDate);
-            useEffect(() => {
-                selectedDateRef.current = selectedDate;
-                setShushuChanged(false);
-                setGaogaoChanged(false);
-            }, [selectedDate]);
 
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
@@ -242,77 +228,67 @@
                 });
             }, []);
 
+            // 監聽雲端資料
             useEffect(() => {
                 if (!user) return;
                 const docRef = doc(db, 'shared_diaries', ROOM_ID);
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        const cloudEntries = docSnap.data().entries || {};
-                        
-                        setEntries(prevEntries => {
-                            const activeEl = document.activeElement;
-                            const isEditingShushu = activeEl && activeEl.id && activeEl.id.startsWith('shushu-');
-                            const isEditingGaogao = activeEl && activeEl.id && activeEl.id.startsWith('gaogao-');
-                            const currentSelDate = selectedDateRef.current;
-
-                            const merged = { ...cloudEntries };
-
-                            if (currentSelDate) {
-                                if (!merged[currentSelDate]) {
-                                    merged[currentSelDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
-                                }
-                                if (isEditingShushu && prevEntries[currentSelDate]?.shushu) {
-                                    merged[currentSelDate].shushu = prevEntries[currentSelDate].shushu;
-                                }
-                                if (isEditingGaogao && prevEntries[currentSelDate]?.gaogao) {
-                                    merged[currentSelDate].gaogao = prevEntries[currentSelDate].gaogao;
-                                }
-                            }
-                            return merged;
-                        });
+                        setEntries(docSnap.data().entries || {});
                     }
                 }, (err) => {
                     setSyncStatus('error');
-                    setErrorMsg("Firestore: " + err.message);
+                    setErrorMsg(err.message);
                 });
                 return () => unsubscribe();
             }, [user]);
 
-            const handleSave = async (data) => {
+            // 當切換日期時，重置修改標記
+            useEffect(() => {
+                setShushuChanged(false);
+                setGaogaoChanged(false);
+            }, [selectedDate]);
+
+            // 💡 終極防覆蓋儲存邏輯
+            const handleSave = async () => {
                 setSaveState('saving');
                 
-                // 安全防禦：如果傳入的 data 是空的，預設給予空矩陣結構
-                const safeData = data || { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                // 取得當前畫面上的資料
+                const currentData = entries[selectedDate] || { shushu: ['', '', ''], gaogao: ['', '', ''] };
                 
-                // 💡 正確的巢狀物件合併結構，不使用點路徑，避免寫入失敗
-                const updatePayload = {
+                // 建立一個準備上傳的「局部更新包」
+                const dateUpdatePayload = {};
+                
+                // 如果樹樹有打字，才把樹樹的資料放入更新包
+                if (shushuChanged) {
+                    dateUpdatePayload.shushu = currentData.shushu;
+                }
+                // 如果高高有打字，才把高高的資料放入更新包
+                if (gaogaoChanged) {
+                    dateUpdatePayload.gaogao = currentData.gaogao;
+                }
+                
+                // 如果兩邊都沒修改（可能只是按好玩的），那就兩邊都傳
+                if (!shushuChanged && !gaogaoChanged) {
+                    dateUpdatePayload.shushu = currentData.shushu;
+                    dateUpdatePayload.gaogao = currentData.gaogao;
+                }
+
+                // 結構化 payload
+                const finalPayload = {
                     entries: {
-                        [selectedDate]: {}
+                        [selectedDate]: dateUpdatePayload
                     }
                 };
                 
-                if (shushuChanged) {
-                    updatePayload.entries[selectedDate].shushu = safeData.shushu || ['', '', ''];
-                }
-                if (gaogaoChanged) {
-                    updatePayload.entries[selectedDate].gaogao = safeData.gaogao || ['', '', ''];
-                }
-                
-                // 如果兩側都沒修改（例如直接打開按儲存），則兩邊都提交
-                if (!shushuChanged && !gaogaoChanged) {
-                    updatePayload.entries[selectedDate].shushu = safeData.shushu || ['', '', ''];
-                    updatePayload.entries[selectedDate].gaogao = safeData.gaogao || ['', '', ''];
-                }
-                
                 if (user) {
                     try { 
-                        // 使用正確的巢狀結構 + merge: true。
-                        // 這會精確合併當天日期的 shushu/gaogao 欄位，同時 100% 保留其他所有日期。
-                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), updatePayload, { merge: true }); 
+                        // 使用 { merge: true }，Firebase 只會更新你有傳入的欄位，對方沒修改的欄位會被 100% 保留！
+                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), finalPayload, { merge: true }); 
                         
                         setSaveState('saved');
-                        setShushuChanged(false);
-                        setGaogaoChanged(false);
+                        setShushuChanged(false); // 儲存後重置標記
+                        setGaogaoChanged(false); 
                         
                         setTimeout(() => {
                             setSaveState('idle');
@@ -369,7 +345,7 @@
                                             return <button key={d} onClick={() => { setSelectedDate(ds); setView('entry'); }} className={`aspect-square rounded-xl border-2 border-[#1A1A1A] font-bold text-sm shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/60 text-[#1A1A1A]'}`}>{d}</button>;
                                         })}
                                     </div>
-                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (升級版)</span>
+                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (雙人防覆蓋版)</span>
                                 </div>
                             ) : (
                                 <div className="animate-fade-in">
@@ -383,15 +359,14 @@
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">🌲 樹樹</div>
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
-                                                    key={i} 
-                                                    id={`shushu-${i}`} 
+                                                    key={`shushu-${i}`} 
                                                     value={entries[selectedDate]?.shushu?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
                                                         if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
                                                         ne[selectedDate].shushu[i] = e.target.value; 
                                                         setEntries(ne); 
-                                                        setShushuChanged(true); 
+                                                        setShushuChanged(true); // 💡 標記樹樹正在編輯
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -402,15 +377,14 @@
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">☁️ 高高</div>
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
-                                                    key={i} 
-                                                    id={`gaogao-${i}`} 
+                                                    key={`gaogao-${i}`} 
                                                     value={entries[selectedDate]?.gaogao?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
                                                         if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
                                                         ne[selectedDate].gaogao[i] = e.target.value; 
                                                         setEntries(ne); 
-                                                        setGaogaoChanged(true); 
+                                                        setGaogaoChanged(true); // 💡 標記高高正在編輯
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -419,9 +393,9 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 儲存按鈕 */}
+                                    {/* 儲存按鈕：保留變色特效 */}
                                     <button 
-                                        onClick={() => handleSave(entries[selectedDate])} 
+                                        onClick={handleSave} 
                                         disabled={saveState === 'saving'}
                                         className={`w-full py-4 border-2 border-[#1A1A1A] rounded-xl font-bold flex items-center justify-center gap-2 shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 transition-all duration-300 mb-6 text-sm text-[#1A1A1A] ${
                                             saveState === 'saved' ? 'bg-white' : 'bg-[#DDF0C5]'
