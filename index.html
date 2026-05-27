@@ -204,18 +204,24 @@
             const [syncStatus, setSyncStatus] = useState('connecting'); 
             const [errorMsg, setErrorMsg] = useState('');
             
-            const [saveState, setSaveState] = useState('idle'); // 'idle'、'saving'、'saved'
+            const [saveState, setSaveState] = useState('idle');
 
-            // 💡 獨立追蹤樹樹與高高是否被修改過
             const [shushuChanged, setShushuChanged] = useState(false);
             const [gaogaoChanged, setGaogaoChanged] = useState(false);
 
-            // ⚠️ 房間 ID 保持不變，保留所有過往紀錄
             const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL"; 
             
             const [entries, setEntries] = useState({});
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
+
+            // 使用 Ref 追蹤目前畫面停留在哪一天，確保 Snapshot 觸發時能準確判斷
+            const selectedDateRef = useRef(selectedDate);
+            useEffect(() => {
+                selectedDateRef.current = selectedDate;
+                setShushuChanged(false);
+                setGaogaoChanged(false);
+            }, [selectedDate]);
 
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
@@ -228,13 +234,40 @@
                 });
             }, []);
 
-            // 監聽雲端資料
+            // 💡 核心防護機制：監聽雲端資料時，避開正在輸入的區塊
             useEffect(() => {
                 if (!user) return;
                 const docRef = doc(db, 'shared_diaries', ROOM_ID);
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        setEntries(docSnap.data().entries || {});
+                        const cloudData = docSnap.data().entries || {};
+                        
+                        setEntries(prevEntries => {
+                            // 獲取目前使用者的滑鼠/游標停在哪個格子裡
+                            const activeEl = document.activeElement;
+                            const isEditingShushu = activeEl && activeEl.id && activeEl.id.startsWith('shushu-');
+                            const isEditingGaogao = activeEl && activeEl.id && activeEl.id.startsWith('gaogao-');
+                            const currentSelDate = selectedDateRef.current;
+
+                            // 深拷貝雲端資料
+                            const merged = JSON.parse(JSON.stringify(cloudData));
+
+                            // 如果使用者正在查看某一天，且正在打字
+                            if (currentSelDate && prevEntries[currentSelDate]) {
+                                if (!merged[currentSelDate]) {
+                                    merged[currentSelDate] = { shushu: ['', '', ''], gaogao: ['', '', ''] };
+                                }
+                                // 如果正在編輯樹樹，就保留本地樹樹的內容（不要被雲端覆蓋）
+                                if (isEditingShushu) {
+                                    merged[currentSelDate].shushu = prevEntries[currentSelDate].shushu;
+                                }
+                                // 如果正在編輯高高，就保留本地高高的內容（不要被雲端覆蓋）
+                                if (isEditingGaogao) {
+                                    merged[currentSelDate].gaogao = prevEntries[currentSelDate].gaogao;
+                                }
+                            }
+                            return merged;
+                        });
                     }
                 }, (err) => {
                     setSyncStatus('error');
@@ -243,38 +276,23 @@
                 return () => unsubscribe();
             }, [user]);
 
-            // 當切換日期時，重置修改標記
-            useEffect(() => {
-                setShushuChanged(false);
-                setGaogaoChanged(false);
-            }, [selectedDate]);
-
-            // 💡 終極防覆蓋儲存邏輯
             const handleSave = async () => {
                 setSaveState('saving');
                 
-                // 取得當前畫面上的資料
-                const currentData = entries[selectedDate] || { shushu: ['', '', ''], gaogao: ['', '', ''] };
-                
-                // 建立一個準備上傳的「局部更新包」
+                const currentData = entries[selectedDate] || {};
+                const safeShushu = currentData.shushu || ['', '', ''];
+                const safeGaogao = currentData.gaogao || ['', '', ''];
+
                 const dateUpdatePayload = {};
                 
-                // 如果樹樹有打字，才把樹樹的資料放入更新包
-                if (shushuChanged) {
-                    dateUpdatePayload.shushu = currentData.shushu;
-                }
-                // 如果高高有打字，才把高高的資料放入更新包
-                if (gaogaoChanged) {
-                    dateUpdatePayload.gaogao = currentData.gaogao;
-                }
+                if (shushuChanged) dateUpdatePayload.shushu = safeShushu;
+                if (gaogaoChanged) dateUpdatePayload.gaogao = safeGaogao;
                 
-                // 如果兩邊都沒修改（可能只是按好玩的），那就兩邊都傳
                 if (!shushuChanged && !gaogaoChanged) {
-                    dateUpdatePayload.shushu = currentData.shushu;
-                    dateUpdatePayload.gaogao = currentData.gaogao;
+                    dateUpdatePayload.shushu = safeShushu;
+                    dateUpdatePayload.gaogao = safeGaogao;
                 }
 
-                // 結構化 payload
                 const finalPayload = {
                     entries: {
                         [selectedDate]: dateUpdatePayload
@@ -283,16 +301,11 @@
                 
                 if (user) {
                     try { 
-                        // 使用 { merge: true }，Firebase 只會更新你有傳入的欄位，對方沒修改的欄位會被 100% 保留！
                         await setDoc(doc(db, 'shared_diaries', ROOM_ID), finalPayload, { merge: true }); 
-                        
                         setSaveState('saved');
-                        setShushuChanged(false); // 儲存後重置標記
+                        setShushuChanged(false); 
                         setGaogaoChanged(false); 
-                        
-                        setTimeout(() => {
-                            setSaveState('idle');
-                        }, 2000);
+                        setTimeout(() => setSaveState('idle'), 2000);
                     } catch (e) { 
                         setSyncStatus('error'); 
                         setErrorMsg(e.message); 
@@ -360,13 +373,17 @@
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={`shushu-${i}`} 
+                                                    id={`shushu-${i}`} 
                                                     value={entries[selectedDate]?.shushu?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
-                                                        if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
-                                                        ne[selectedDate].shushu[i] = e.target.value; 
+                                                        const currentDay = ne[selectedDate] ? { ...ne[selectedDate] } : { shushu: ['','',''], gaogao: ['','',''] };
+                                                        const currentShushu = currentDay.shushu ? [...currentDay.shushu] : ['','',''];
+                                                        currentShushu[i] = e.target.value;
+                                                        currentDay.shushu = currentShushu;
+                                                        ne[selectedDate] = currentDay;
                                                         setEntries(ne); 
-                                                        setShushuChanged(true); // 💡 標記樹樹正在編輯
+                                                        setShushuChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -378,13 +395,17 @@
                                             {[0, 1, 2].map(i => (
                                                 <textarea 
                                                     key={`gaogao-${i}`} 
+                                                    id={`gaogao-${i}`} 
                                                     value={entries[selectedDate]?.gaogao?.[i] || ''} 
                                                     onChange={(e) => { 
                                                         const ne = { ...entries }; 
-                                                        if (!ne[selectedDate]) ne[selectedDate] = { shushu:['','',''], gaogao:['','',''] }; 
-                                                        ne[selectedDate].gaogao[i] = e.target.value; 
+                                                        const currentDay = ne[selectedDate] ? { ...ne[selectedDate] } : { shushu: ['','',''], gaogao: ['','',''] };
+                                                        const currentGaogao = currentDay.gaogao ? [...currentDay.gaogao] : ['','',''];
+                                                        currentGaogao[i] = e.target.value;
+                                                        currentDay.gaogao = currentGaogao;
+                                                        ne[selectedDate] = currentDay;
                                                         setEntries(ne); 
-                                                        setGaogaoChanged(true); // 💡 標記高高正在編輯
+                                                        setGaogaoChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
