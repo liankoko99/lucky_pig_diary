@@ -7,33 +7,23 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>lucky pig pig</title>
-    
-    <script type="importmap">
-        {
-            "imports": {
-                "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
-                "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
-                "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
-            }
-        }
-    </script>
 
     <!-- 載入 React 與 Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
-        
+
         :root { --ink: #1A1A1A; --bg: #7AC174; }
-        
-        body { 
-            background-color: var(--bg); 
-            font-family: 'Zen Maru Gothic', sans-serif; 
-            color: var(--ink); 
-            margin: 0; 
+
+        body {
+            background-color: var(--bg);
+            font-family: 'Zen Maru Gothic', sans-serif;
+            color: var(--ink);
+            margin: 0;
             overflow-x: hidden;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -68,8 +58,8 @@
             box-shadow: 1px 1px 0px var(--ink);
         }
 
-        .textarea-shadow { 
-            box-shadow: 3px 3px 0px var(--ink); 
+        .textarea-shadow {
+            box-shadow: 3px 3px 0px var(--ink);
             border: 2px solid var(--ink);
             transition: all 0.2s ease;
         }
@@ -78,8 +68,8 @@
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 
-        .dog-item-box { 
-            width: 100%; 
+        .dog-item-box {
+            width: 100%;
             height: 55px;
             display: flex;
             align-items: center;
@@ -89,16 +79,30 @@
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+        #boot-error {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%;
+            background: rgba(200,0,0,0.95); color: white;
+            padding: 16px; z-index: 999999; font-size: 13px;
+            font-family: monospace; white-space: pre-wrap; word-break: break-all;
+        }
     </style>
 
-    <!-- 💡 核心修復：捕捉全域錯誤並強制設定 Babel 使用 Classic Runtime -->
+    <!-- 全域錯誤捕捉：對 Babel 解析錯誤與一般 runtime 錯誤都有效 -->
     <script>
-        window.addEventListener('error', function(event) {
-            if(document.body) {
-                var errDiv = document.createElement('div');
-                errDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:rgba(255,0,0,0.9);color:white;padding:20px;z-index:999999;font-size:14px;word-break:break-all;';
-                errDiv.innerText = '系統錯誤: ' + event.message;
-                document.body.appendChild(errDiv);
+        window.addEventListener('error', function (event) {
+            var box = document.getElementById('boot-error');
+            if (box) {
+                box.style.display = 'block';
+                box.innerText = '系統錯誤: ' + (event.message || event.error || '未知錯誤');
+            }
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+            var box = document.getElementById('boot-error');
+            if (box) {
+                box.style.display = 'block';
+                box.innerText = '系統錯誤(Promise): ' + (event.reason && event.reason.message ? event.reason.message : event.reason);
             }
         });
 
@@ -112,15 +116,25 @@
     </script>
 </head>
 <body>
+    <div id="boot-error"></div>
     <div id="root"></div>
 
-    <!-- 💡 使用自訂的 react-classic 編譯設定，徹底避開 jsx-runtime 找不到的問題 -->
-    <script type="text/babel" data-type="module" data-presets="react-classic">
-        import { initializeApp } from 'firebase/app';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+    <!--
+        關鍵修正：
+        Firebase 的 import 必須在「原生」的 <script type="module"> 中執行，
+        不能放進 Babel 編譯的 <script type="text/babel"> 裡，
+        否則 import 語法在 Babel 編譯後不遵守 importmap，會直接整段 script 解析失敗，
+        導致畫面完全空白（連你寫的 error handler 都來不及顯示）。
 
-        const { useState, useEffect, useRef } = React;
+        這裡改用原生 module 載入 Firebase，初始化完成後把 auth / db /
+        所需的 firestore 函式掛到 window 上，
+        讓下方 Babel/React 那段程式可以直接用 window.* 取用，
+        完全不需要改動你原本的 React 邏輯與資料結構。
+    -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
@@ -131,9 +145,31 @@
             appId: "1:483484047694:web:a2ae027087971638d6e61f"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        try {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            // 掛載到 window，讓 Babel 編譯的 React 程式可以使用
+            window.__firebase = {
+                auth, db,
+                signInAnonymously, onAuthStateChanged,
+                doc, setDoc, onSnapshot
+            };
+            window.__firebaseReady = true;
+            window.dispatchEvent(new Event('firebase-ready'));
+        } catch (err) {
+            var box = document.getElementById('boot-error');
+            if (box) {
+                box.style.display = 'block';
+                box.innerText = 'Firebase 初始化失敗: ' + err.message;
+            }
+        }
+    </script>
+
+    <!-- React App：使用 react-classic preset 編譯，不含任何 import 語句 -->
+    <script type="text/babel" data-presets="react-classic">
+        const { useState, useEffect, useRef } = React;
 
         // 確保陣列格式永遠不會為 undefined，防止儲存崩潰
         const getSafeArray = (arr) => {
@@ -231,9 +267,10 @@
         function App() {
             const [view, setView] = useState('calendar');
             const [user, setUser] = useState(null);
-            const [syncStatus, setSyncStatus] = useState('connecting'); 
+            const [syncStatus, setSyncStatus] = useState('connecting');
             const [errorMsg, setErrorMsg] = useState('');
             const [saveState, setSaveState] = useState('idle');
+            const [fbReady, setFbReady] = useState(!!window.__firebaseReady);
 
             // 雙人同步架構：狀態分離
             const [cloudEntries, setCloudEntries] = useState({});
@@ -242,26 +279,40 @@
             const [shushuChanged, setShushuChanged] = useState(false);
             const [gaogaoChanged, setGaogaoChanged] = useState(false);
 
-            const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL"; 
-            
+            const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL";
+
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
 
+            // 等待原生 module script 完成 Firebase 初始化
             useEffect(() => {
+                if (window.__firebaseReady) {
+                    setFbReady(true);
+                    return;
+                }
+                const handler = () => setFbReady(true);
+                window.addEventListener('firebase-ready', handler);
+                return () => window.removeEventListener('firebase-ready', handler);
+            }, []);
+
+            useEffect(() => {
+                if (!fbReady) return;
+                const { auth, signInAnonymously, onAuthStateChanged } = window.__firebase;
                 signInAnonymously(auth).catch(err => {
                     setSyncStatus('error');
                     setErrorMsg("登入失敗: " + err.message);
                 });
                 const unsub = onAuthStateChanged(auth, (u) => {
                     setUser(u);
-                    if(u) setSyncStatus('linked');
+                    if (u) setSyncStatus('linked');
                 });
                 return () => unsub();
-            }, []);
+            }, [fbReady]);
 
             useEffect(() => {
-                if (!user) return;
+                if (!user || !fbReady) return;
                 try {
+                    const { db, doc, onSnapshot } = window.__firebase;
                     const docRef = doc(db, 'shared_diaries', ROOM_ID);
                     const unsubscribe = onSnapshot(docRef, (docSnap) => {
                         if (docSnap.exists()) {
@@ -272,13 +323,15 @@
                         }
                     }, (err) => {
                         setSyncStatus('error');
-                        setErrorMsg("讀取權限錯誤");
+                        setErrorMsg("讀取權限錯誤: " + err.message);
                     });
                     return () => unsubscribe();
                 } catch (err) {
                     console.error("Firebase Error:", err);
+                    setSyncStatus('error');
+                    setErrorMsg("讀取時發生錯誤: " + err.message);
                 }
-            }, [user]);
+            }, [user, fbReady]);
 
             useEffect(() => {
                 if (selectedDate) {
@@ -293,7 +346,7 @@
             useEffect(() => {
                 if (!selectedDate) return;
                 const dayData = cloudEntries[selectedDate] || {};
-                
+
                 if (!shushuChanged) {
                     setLocalShushu(getSafeArray(dayData.shushu));
                 }
@@ -304,12 +357,12 @@
 
             const handleSave = async () => {
                 setSaveState('saving');
-                
+
                 const dateUpdatePayload = {};
-                
+
                 if (shushuChanged) dateUpdatePayload.shushu = getSafeArray(localShushu);
                 if (gaogaoChanged) dateUpdatePayload.gaogao = getSafeArray(localGaogao);
-                
+
                 if (!shushuChanged && !gaogaoChanged) {
                     dateUpdatePayload.shushu = getSafeArray(localShushu);
                     dateUpdatePayload.gaogao = getSafeArray(localGaogao);
@@ -320,17 +373,18 @@
                         [selectedDate]: dateUpdatePayload
                     }
                 };
-                
-                if (user) {
-                    try { 
-                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), finalPayload, { merge: true }); 
+
+                if (user && fbReady) {
+                    try {
+                        const { db, doc, setDoc } = window.__firebase;
+                        await setDoc(doc(db, 'shared_diaries', ROOM_ID), finalPayload, { merge: true });
                         setSaveState('saved');
-                        setShushuChanged(false); 
-                        setGaogaoChanged(false); 
+                        setShushuChanged(false);
+                        setGaogaoChanged(false);
                         setTimeout(() => setSaveState('idle'), 2000);
-                    } catch (e) { 
-                        setSyncStatus('error'); 
-                        setErrorMsg("寫入失敗"); 
+                    } catch (e) {
+                        setSyncStatus('error');
+                        setErrorMsg("寫入失敗: " + e.message);
                         setSaveState('idle');
                     }
                 }
@@ -352,14 +406,14 @@
                                     <h1 className="text-xl font-bold text-[#1A1A1A]">今日小確幸</h1>
                                 </div>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => errorMsg && alert(errorMsg)}
                                 className={`px-3 py-1 text-[9px] font-bold rounded-full border-2 border-[#1A1A1A] shadow-[2px_2px_0px_#1A1A1A] ${syncStatus === 'linked' ? 'bg-[#FCF5CA] text-[#1A1A1A]' : 'bg-red-100 text-[#1A1A1A]'}`}
                             >
-                                {syncStatus === 'linked' ? '● 自動同步中' : '連線異常'}
+                                {syncStatus === 'linked' ? '● 自動同步中' : syncStatus === 'connecting' ? '連線中...' : '連線異常'}
                             </button>
                         </header>
-                        
+
                         <main className="flex-1 overflow-y-auto custom-scroll pr-1">
                             {view === 'calendar' ? (
                                 <div className="animate-fade-in px-1 text-center">
@@ -390,46 +444,46 @@
                                         <div className="inline-block bg-white px-2 py-0.5 rounded border border-[#1A1A1A] text-[10px] font-bold mb-2 shadow-[1px_1px_0px_#1A1A1A]">{selectedDate.replace(/-/g, '.')}</div>
                                         <h2 className="text-lg font-bold text-[#1A1A1A]">今天感恩的 3 件事：</h2>
                                     </div>
-                                    
+
                                     <div className="grid grid-cols-2 gap-3 mb-6">
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">🌲 樹樹</div>
                                             {[0, 1, 2].map(i => (
-                                                <textarea 
-                                                    key={`shushu-${i}`} 
-                                                    value={localShushu[i]} 
-                                                    onChange={(e) => { 
+                                                <textarea
+                                                    key={`shushu-${i}`}
+                                                    value={localShushu[i]}
+                                                    onChange={(e) => {
                                                         const next = [...localShushu];
                                                         next[i] = e.target.value;
                                                         setLocalShushu(next);
-                                                        setShushuChanged(true); 
-                                                    }} 
-                                                    placeholder="記錄一點小確幸～" 
-                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
+                                                        setShushuChanged(true);
+                                                    }}
+                                                    placeholder="記錄一點小確幸～"
+                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]"
                                                 />
                                             ))}
                                         </div>
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">☁️ 高高</div>
                                             {[0, 1, 2].map(i => (
-                                                <textarea 
-                                                    key={`gaogao-${i}`} 
-                                                    value={localGaogao[i]} 
-                                                    onChange={(e) => { 
+                                                <textarea
+                                                    key={`gaogao-${i}`}
+                                                    value={localGaogao[i]}
+                                                    onChange={(e) => {
                                                         const next = [...localGaogao];
                                                         next[i] = e.target.value;
                                                         setLocalGaogao(next);
-                                                        setGaogaoChanged(true); 
-                                                    }} 
-                                                    placeholder="記錄一點小確幸～" 
-                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
+                                                        setGaogaoChanged(true);
+                                                    }}
+                                                    placeholder="記錄一點小確幸～"
+                                                    className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]"
                                                 />
                                             ))}
                                         </div>
                                     </div>
-                                    
-                                    <button 
-                                        onClick={handleSave} 
+
+                                    <button
+                                        onClick={handleSave}
                                         disabled={saveState === 'saving'}
                                         className={`w-full py-4 border-2 border-[#1A1A1A] rounded-xl font-bold flex items-center justify-center gap-2 shadow-[4px_4px_0px_#1A1A1A] active:translate-y-1 transition-all duration-300 mb-6 text-sm text-[#1A1A1A] ${
                                             saveState === 'saved' ? 'bg-white' : 'bg-[#DDF0C5]'
@@ -444,12 +498,12 @@
                                             <span className="opacity-60">儲存中...</span>
                                         ) : (
                                             <>
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                                                 儲存 3 份小確幸
                                             </>
                                         )}
                                     </button>
-                                    
+
                                     <DogGallery />
                                 </div>
                             )}
