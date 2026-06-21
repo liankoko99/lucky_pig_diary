@@ -98,9 +98,8 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // Firebase 實時設定資訊
         const firebaseConfig = {
             apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
             authDomain: "lucky-pig-diary.firebaseapp.com",
@@ -114,16 +113,16 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 資料安全轉換器：確保陣列永遠有 3 個位置，不讓 undefined 引發崩潰
+        // 💡 終極安全過濾器：確保輸入框陣列永遠正確，防止崩潰
         const getSafeArray = (arr) => {
+            if (!arr || !Array.isArray(arr)) return ['', '', ''];
             return [
-                arr?.[0] || '',
-                arr?.[1] || '',
-                arr?.[2] || ''
+                arr[0] || '',
+                arr[1] || '',
+                arr[2] || ''
             ];
         };
 
-        // 4 隻平躺狗狗插畫
         const DogGallery = () => {
             const ink = "#1A1A1A";
             const blush = "#FF9999";
@@ -212,10 +211,9 @@
             const [user, setUser] = useState(null);
             const [syncStatus, setSyncStatus] = useState('connecting'); 
             const [errorMsg, setErrorMsg] = useState('');
-            
             const [saveState, setSaveState] = useState('idle');
 
-            // 💡 分離架構：雲端資料與本地輸入框徹底分開
+            // 雙人同步架構：狀態分離
             const [cloudEntries, setCloudEntries] = useState({});
             const [localShushu, setLocalShushu] = useState(['', '', '']);
             const [localGaogao, setLocalGaogao] = useState(['', '', '']);
@@ -227,11 +225,11 @@
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState('');
 
-            // 初始化驗證
+            // 登入
             useEffect(() => {
                 signInAnonymously(auth).catch(err => {
                     setSyncStatus('error');
-                    setErrorMsg(err.message);
+                    setErrorMsg("登入失敗: " + err.message);
                 });
                 onAuthStateChanged(auth, (u) => {
                     setUser(u);
@@ -239,62 +237,65 @@
                 });
             }, []);
 
-            // 1. 監聽 Firebase 雲端資料 (只存進 cloudEntries)
+            // 監聽雲端資料庫
             useEffect(() => {
                 if (!user) return;
-                const docRef = doc(db, 'shared_diaries', ROOM_ID);
-                const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        setCloudEntries(docSnap.data().entries || {});
-                    }
-                }, (err) => {
-                    setSyncStatus('error');
-                    setErrorMsg(err.message);
-                });
-                return () => unsubscribe();
+                try {
+                    const docRef = doc(db, 'shared_diaries', ROOM_ID);
+                    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            setCloudEntries(data?.entries || {});
+                        } else {
+                            setCloudEntries({});
+                        }
+                    }, (err) => {
+                        setSyncStatus('error');
+                        setErrorMsg("權限錯誤: " + err.message);
+                    });
+                    return () => unsubscribe();
+                } catch (err) {
+                    console.error("Firebase Snapshot Error:", err);
+                }
             }, [user]);
 
-            // 2. 當切換日期時，載入雲端資料到本地輸入框
+            // 切換日期時載入
             useEffect(() => {
                 if (selectedDate) {
                     setShushuChanged(false);
                     setGaogaoChanged(false);
                     const dayData = cloudEntries[selectedDate] || {};
-                    // 強制轉為安全陣列格式
                     setLocalShushu(getSafeArray(dayData.shushu));
                     setLocalGaogao(getSafeArray(dayData.gaogao));
                 }
             }, [selectedDate]);
 
-            // 3. 雲端資料更新時，安全地同步到畫面 (保護正在輸入的區塊)
+            // 雲端有更新時，智能合併 (保護正在打字嘅欄位)
             useEffect(() => {
                 if (!selectedDate) return;
                 const dayData = cloudEntries[selectedDate] || {};
                 
-                // 如果樹樹沒有在輸入，才更新樹樹的畫面
                 if (!shushuChanged) {
                     setLocalShushu(getSafeArray(dayData.shushu));
                 }
-                // 如果高高沒有在輸入，才更新高高的畫面
                 if (!gaogaoChanged) {
                     setLocalGaogao(getSafeArray(dayData.gaogao));
                 }
             }, [cloudEntries]);
 
-            // 💡 儲存邏輯：只上傳真正有改變的資料
+            // 局部儲存上傳
             const handleSave = async () => {
                 setSaveState('saving');
                 
                 const dateUpdatePayload = {};
                 
-                // 只有被改變的一方，才會被放入更新包
-                if (shushuChanged) dateUpdatePayload.shushu = localShushu;
-                if (gaogaoChanged) dateUpdatePayload.gaogao = localGaogao;
+                if (shushuChanged) dateUpdatePayload.shushu = getSafeArray(localShushu);
+                if (gaogaoChanged) dateUpdatePayload.gaogao = getSafeArray(localGaogao);
                 
-                // 如果兩邊都沒改變（防呆點擊），確保兩邊資料安全覆蓋回去
+                // 防呆機制：若無修改直接按儲存，確保安全覆蓋
                 if (!shushuChanged && !gaogaoChanged) {
-                    dateUpdatePayload.shushu = localShushu;
-                    dateUpdatePayload.gaogao = localGaogao;
+                    dateUpdatePayload.shushu = getSafeArray(localShushu);
+                    dateUpdatePayload.gaogao = getSafeArray(localGaogao);
                 }
 
                 const finalPayload = {
@@ -312,7 +313,7 @@
                         setTimeout(() => setSaveState('idle'), 2000);
                     } catch (e) { 
                         setSyncStatus('error'); 
-                        setErrorMsg(e.message); 
+                        setErrorMsg("寫入失敗: " + e.message); 
                         setSaveState('idle');
                     }
                 }
@@ -341,6 +342,7 @@
                                 {syncStatus === 'linked' ? '● 自動同步中' : '連線異常'}
                             </button>
                         </header>
+                        
                         <main className="flex-1 overflow-y-auto custom-scroll pr-1">
                             {view === 'calendar' ? (
                                 <div className="animate-fade-in px-1 text-center">
@@ -353,26 +355,26 @@
                                     </div>
                                     <div className="grid grid-cols-7 gap-2 mb-8">
                                         {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-center text-[10px] font-bold opacity-40 text-[#1A1A1A]">{d}</div>)}
-                                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => <div key={i} />)}
+                                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
                                         {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                                             const d = i + 1;
                                             const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                                             const dayData = cloudEntries[ds];
-                                            const hasData = dayData && (dayData.shushu?.some(v => v.trim()) || dayData.gaogao?.some(v => v.trim()));
+                                            const hasData = dayData && (getSafeArray(dayData.shushu).some(v => v.trim()) || getSafeArray(dayData.gaogao).some(v => v.trim()));
                                             return <button key={d} onClick={() => { setSelectedDate(ds); setView('entry'); }} className={`aspect-square rounded-xl border-2 border-[#1A1A1A] font-bold text-sm shadow-[2px_2px_0px_#1A1A1A] active:translate-y-0.5 ${hasData ? 'bg-[#1A1A1A] text-white' : 'bg-white/60 text-[#1A1A1A]'}`}>{d}</button>;
                                         })}
                                     </div>
-                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (雙人防干擾極致版)</span>
+                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記 (修復穩定版)</span>
                                 </div>
                             ) : (
                                 <div className="animate-fade-in">
-                                    <button onClick={() => setView('calendar')} className="flex items-center gap-1 text-sm font-bold opacity-60 mb-4 text-[#1A1A1A]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg> 返回月曆</button>
+                                    <button onClick={() => setView('calendar')} className="flex items-center gap-1 text-sm font-bold opacity-60 mb-4 text-[#1A1A1A] hover:opacity-100 transition-opacity"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg> 返回月曆</button>
                                     <div className="mb-4">
                                         <div className="inline-block bg-white px-2 py-0.5 rounded border border-[#1A1A1A] text-[10px] font-bold mb-2 shadow-[1px_1px_0px_#1A1A1A]">{selectedDate.replace(/-/g, '.')}</div>
                                         <h2 className="text-lg font-bold text-[#1A1A1A]">今天感恩的 3 件事：</h2>
                                     </div>
+                                    
                                     <div className="grid grid-cols-2 gap-3 mb-6">
-                                        {/* 樹樹區塊 */}
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">🌲 樹樹</div>
                                             {[0, 1, 2].map(i => (
@@ -383,14 +385,13 @@
                                                         const next = [...localShushu];
                                                         next[i] = e.target.value;
                                                         setLocalShushu(next);
-                                                        setShushuChanged(true); // 鎖定防護罩，不被雲端覆蓋
+                                                        setShushuChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
                                                 />
                                             ))}
                                         </div>
-                                        {/* 高高區塊 */}
                                         <div>
                                             <div className="text-center font-bold text-[13px] opacity-60 mb-2 text-[#1A1A1A]">☁️ 高高</div>
                                             {[0, 1, 2].map(i => (
@@ -401,7 +402,7 @@
                                                         const next = [...localGaogao];
                                                         next[i] = e.target.value;
                                                         setLocalGaogao(next);
-                                                        setGaogaoChanged(true); // 鎖定防護罩，不被雲端覆蓋
+                                                        setGaogaoChanged(true); 
                                                     }} 
                                                     placeholder="記錄一點小確幸～" 
                                                     className="w-full bg-white rounded-xl p-2.5 text-[11px] min-h-[85px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]" 
@@ -410,7 +411,6 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 儲存按鈕 */}
                                     <button 
                                         onClick={handleSave} 
                                         disabled={saveState === 'saving'}
