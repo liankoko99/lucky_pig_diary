@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" id="meta-theme" content="#7AC174">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="小確幸">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <title>lucky pig pig · 今日小確幸</title>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap');
+
+        :root {
+            --ink: #1A1A1A;
+            --bg: #7AC174;
+            --accent: #3E7C3A;
+            --soft: #DDF0C5;
+            --paper: #FFFDF6;
+            --highlight: #FCF5CA;
+            --shushu: #3E7C3A;
+            --gaogao: #3A6EA8;
+        }
+
+        html { background-color: var(--bg); }
+        body {
+            background-color: var(--bg);
+            font-family: 'Zen Maru Gothic', sans-serif;
+            color: var(--ink);
+            margin: 0;
+            overflow-x: hidden;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            transition: background-color 0.5s ease;
+        }
+        textarea, input { -webkit-user-select: auto; user-select: auto; }
+
+        .hand-drawn-container {
+            border: 3px solid var(--ink);
+            border-radius: 30px;
+            box-shadow: 8px 8px 0px rgba(0,0,0,0.15);
+            background-color: var(--bg);
+            transition: background-color 0.5s ease;
+        }
+
+        .noise-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; opacity: 0.1; z-index: 9999;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        .sticker { border: 2px solid var(--ink); box-shadow: 2px 2px 0px var(--ink); }
+        .sticker-lg { border: 3px solid var(--ink); box-shadow: 4px 4px 0px var(--ink); }
+
+        .textarea-shadow {
+            box-shadow: 3px 3px 0px var(--ink);
+            border: 2px solid var(--ink);
+            transition: box-shadow 0.2s ease;
+        }
+        .textarea-shadow:focus { box-shadow: 5px 5px 0px var(--accent); outline: none; border-color: var(--accent); }
+
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+
+        .dog-item-box { width: 100%; height: 55px; display: flex; align-items: center; justify-content: center; }
+        .dog-svg-core { width: 100%; height: 100%; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+        @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .animate-pop { animation: popIn 0.25s ease-out forwards; }
+
+        @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        .animate-floaty { animation: floaty 3s ease-in-out infinite; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .animate-fade-in, .animate-pop, .animate-floaty { animation: none; }
+        }
+
+        #boot-error {
+            display: none; position: fixed; top: 0; left: 0; width: 100%;
+            background: rgba(200,0,0,0.95); color: white;
+            padding: 16px; z-index: 999999; font-size: 13px;
+            font-family: monospace; white-space: pre-wrap; word-break: break-all;
+        }
+    </style>
+
+    <!-- 每月一色：喺 React 起動前即刻套用今個月嘅顏色，避免頂部狀態欄同 App 顏色唔一致 -->
+    <script>
+        (function () {
+            var MONTH_COLORS = ['#9BB8D9','#E8A9B9','#A9D8A0','#EBD26E','#7AC174','#8EC9EC','#F4B183','#6FC2B4','#D9B08C','#E09873','#B79BD8','#E08C8C'];
+            function shade(hex, pct) {
+                var n = parseInt(hex.slice(1), 16), r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+                var t = pct < 0 ? 0 : 255, p = Math.abs(pct);
+                r = Math.round(r + (t-r)*p); g = Math.round(g + (t-g)*p); b = Math.round(b + (t-b)*p);
+                return '#' + ((1<<24) + (r<<16) + (g<<8) + b).toString(16).slice(1);
+            }
+            function applyMonthTheme(mi) {
+                var base = MONTH_COLORS[mi];
+                var s = document.documentElement.style;
+                s.setProperty('--bg', base);
+                s.setProperty('--accent', shade(base, -0.5));
+                s.setProperty('--soft', shade(base, 0.55));
+                var m = document.getElementById('meta-theme');
+                if (m) m.setAttribute('content', base);
+            }
+            applyMonthTheme(new Date().getMonth());
+            window.__applyMonthTheme = applyMonthTheme;
+            window.__monthColors = MONTH_COLORS;
+        })();
+
+        window.addEventListener('error', function (event) {
+            var box = document.getElementById('boot-error');
+            if (box) { box.style.display = 'block'; box.innerText = '系統錯誤: ' + (event.message || event.error || '未知錯誤'); }
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+            var box = document.getElementById('boot-error');
+            if (box) { box.style.display = 'block'; box.innerText = '系統錯誤(Promise): ' + (event.reason && event.reason.message ? event.reason.message : event.reason); }
+        });
+        if (typeof Babel !== 'undefined') {
+            Babel.registerPreset('react-classic', {
+                presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]]
+            });
+        }
+    </script>
+</head>
+<body>
+    <div id="boot-error"></div>
+    <div id="root"></div>
+
+    <!-- Firebase：必須用原生 module script 載入，唔可以放入 Babel script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBXQd28R5f6P78DxhIgcG3JrRIRAmSMrns",
+            authDomain: "lucky-pig-diary.firebaseapp.com",
+            projectId: "lucky-pig-diary",
+            storageBucket: "lucky-pig-diary.firebasestorage.app",
+            messagingSenderId: "483484047694",
+            appId: "1:483484047694:web:a2ae027087971638d6e61f"
+        };
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            window.__firebase = { auth, db, signInAnonymously, onAuthStateChanged, doc, setDoc, onSnapshot };
+            window.__firebaseReady = true;
+            window.dispatchEvent(new Event('firebase-ready'));
+        } catch (err) {
+            var box = document.getElementById('boot-error');
+            if (box) { box.style.display = 'block'; box.innerText = 'Firebase 初始化失敗: ' + err.message; }
+        }
+    </script>
+
+    <script type="text/babel" data-presets="react-classic">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        const ROOM_ID = "LUCKY_PIG_SYNC_ROOM_FINAL";
+
+        // ============ 兩位主角（顏色只用嚟做小點同標示，App 主色跟月份）============
+        const PEOPLE = {
+            shushu: { key: 'shushu', name: '樹樹', emoji: '🌲', color: '#3E7C3A' },
+            gaogao: { key: 'gaogao', name: '高高', emoji: '☁️', color: '#3A6EA8' }
+        };
+
+        // ============ 每月一色 ============
+        const MONTH_COLOR_NAMES = ['冬霧藍','櫻花粉','嫩芽綠','檸檬黃','森林綠','天空藍','蜜柑橙','海鹽綠','奶茶啡','楓葉橙','薰衣草','莓果紅'];
+
+        const QUOTES = [
+            '幸福唔係擁有幾多，而係記得幾多 ✨',
+            '小小嘅好事，慢慢儲起嚟就係大大嘅幸福 🐷',
+            '今日都要搵三粒星星呀 ⭐',
+            '寫低嘅一刻，快樂會變雙倍 💛',
+            '同你一齊記錄嘅每一日，都好珍貴',
+            '就算平凡嘅一日，都有值得感恩嘅瞬間',
+            '記得望下天空，佢今日都好靚 ☁️',
+            '一步一步，我哋一齊儲緊幸福 🌱',
+            '感恩係一種會傳染嘅魔法 🪄',
+            '今日辛苦晒啦，寫低啲開心嘢先瞓 🌙'
+        ];
+
+        const getSafeArray = (arr) => {
+            if (!arr || !Array.isArray(arr)) return ['', '', ''];
+            return [arr[0] || '', arr[1] || '', arr[2] || ''];
+        };
+
+        const hasContent = (arr) => getSafeArray(arr).some(v => v.trim());
+        const countContent = (arr) => getSafeArray(arr).filter(v => v.trim()).length;
+
+        const dateToStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const todayStr = () => dateToStr(new Date());
+
+        // 連續紀錄：由今日（或琴日）向後數
+        const calcStreak = (entries, who) => {
+            let streak = 0;
+            const d = new Date();
+            // 今日未寫唔算斷，由琴日開始數
+            if (!hasContent((entries[dateToStr(d)] || {})[who])) {
+                d.setDate(d.getDate() - 1);
+            }
+            while (true) {
+                const ds = dateToStr(d);
+                if (hasContent((entries[ds] || {})[who])) {
+                    streak++;
+                    d.setDate(d.getDate() - 1);
+                } else break;
+                if (streak > 3650) break;
+            }
+            return streak;
+        };
+
+        // ============ 狗狗畫廊（原封不動保留）============
+        const DogGallery = () => {
+            const ink = "#1A1A1A";
+            const blush = "#FF9999";
+            return (
+                <div className="mt-8 border-t border-dashed border-[#1A1A1A]/20 pt-6 pb-2">
+                    <div className="text-center text-[10px] font-bold text-[#1A1A1A]/40 mb-4 tracking-widest uppercase">LUCKY DOG DOG</div>
+                    <div className="grid grid-cols-4 gap-2 px-1 justify-items-center">
+                        <div className="dog-item-box">
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
+                                <rect x="35" y="40" width="30" height="45" rx="15" fill="#A57C65" />
+                                <circle cx="30" cy="50" r="7" fill="#A57C65" /><circle cx="70" cy="50" r="7" fill="#A57C65" />
+                                <circle cx="40" cy="85" r="7" fill="#A57C65" /><circle cx="60" cy="85" r="7" fill="#A57C65" />
+                                <ellipse cx="50" cy="65" rx="10" ry="14" fill="#F0E0D0" />
+                                <circle cx="50" cy="35" r="18" fill="#A57C65" />
+                                <path d="M35,25 Q20,20 25,40 Z" fill="#A57C65" /><path d="M65,25 Q80,20 75,40 Z" fill="#A57C65" />
+                                <path d="M42,32 Q45,35 48,32" stroke={ink} fill="none" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M52,32 Q55,35 58,32" stroke={ink} fill="none" strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="50" cy="38" r="2.5" fill={ink} />
+                                <circle cx="40" cy="38" r="3" fill={blush} opacity="0.6" /><circle cx="60" cy="38" r="3" fill={blush} opacity="0.6" />
+                            </svg>
+                        </div>
+                        <div className="dog-item-box">
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
+                                <rect x="35" y="40" width="30" height="45" rx="15" fill="#FFFFFF" />
+                                <circle cx="30" cy="45" r="7" fill="#FFFFFF" /><circle cx="70" cy="45" r="7" fill="#FFFFFF" />
+                                <circle cx="38" cy="85" r="7" fill="#FFFFFF" /><circle cx="62" cy="85" r="7" fill="#FFFFFF" />
+                                <circle cx="50" cy="35" r="18" fill="#FFFFFF" />
+                                <path d="M32,25 Q20,15 22,35 Z" fill="#FFFFFF" /><path d="M68,25 Q80,15 78,35 Z" fill="#FFFFFF" />
+                                <circle cx="43" cy="32" r="2" fill={ink} /><circle cx="57" cy="32" r="2" fill={ink} />
+                                <circle cx="50" cy="37" r="2.5" fill={ink} />
+                                <circle cx="40" cy="38" r="3" fill={blush} opacity="0.8" /><circle cx="60" cy="38" r="3" fill={blush} opacity="0.8" />
+                            </svg>
+                        </div>
+                        <div className="dog-item-box">
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
+                                <rect x="35" y="40" width="30" height="45" rx="15" fill="#FFFFFF" />
+                                <circle cx="45" cy="70" r="8" fill={ink} />
+                                <circle cx="30" cy="50" r="7" fill="#FFFFFF" /><circle cx="70" cy="50" r="7" fill={ink} />
+                                <circle cx="40" cy="85" r="7" fill={ink} /><circle cx="60" cy="85" r="7" fill="#FFFFFF" />
+                                <circle cx="50" cy="35" r="18" fill="#FFFFFF" />
+                                <path d="M50,17 A18 18 0 0 1 68,35 L50,35 Z" fill={ink} />
+                                <path d="M35,25 Q20,20 25,40 Z" fill="#FFFFFF" /><path d="M65,25 Q80,20 75,40 Z" fill={ink} />
+                                <circle cx="43" cy="33" r="2" fill={ink} /><circle cx="57" cy="33" r="2" fill="#FFFFFF" />
+                                <circle cx="50" cy="38" r="2.5" fill={ink} />
+                                <circle cx="40" cy="38" r="3" fill={blush} opacity="0.8" />
+                            </svg>
+                        </div>
+                        <div className="dog-item-box">
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="dog-svg-core">
+                                <rect x="35" y="40" width="30" height="45" rx="15" fill="#E3C5A0" />
+                                <circle cx="30" cy="50" r="7" fill="#E3C5A0" /><circle cx="70" cy="50" r="7" fill="#E3C5A0" />
+                                <circle cx="40" cy="85" r="7" fill="#E3C5A0" /><circle cx="60" cy="85" r="7" fill="#E3C5A0" />
+                                <ellipse cx="50" cy="65" rx="10" ry="15" fill="#FFFFFF" />
+                                <circle cx="50" cy="35" r="18" fill="#E3C5A0" />
+                                <path d="M32,22 Q20,20 22,40 Z" fill="#C49A70" /><path d="M68,22 Q80,20 78,40 Z" fill="#C49A70" />
+                                <path d="M42,32 Q45,35 48,32" stroke={ink} fill="none" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M52,32 Q55,35 58,32" stroke={ink} fill="none" strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="50" cy="38" r="2.5" fill={ink} />
+                                <circle cx="40" cy="38" r="3" fill={blush} opacity="0.6" /><circle cx="60" cy="38" r="3" fill={blush} opacity="0.6" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============ 身份選擇畫面 ============
+        const IdentityPicker = ({ onPick }) => (
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 animate-fade-in">
+                <div className="text-center mb-8">
+                    <div className="text-5xl mb-3 animate-floaty">🐷</div>
+                    <h1 className="text-2xl font-black text-[#1A1A1A]">今日小確幸</h1>
+                    <p className="text-sm opacity-60 mt-1 font-bold">你係邊個呀？</p>
+                </div>
+                <div className="flex flex-col gap-5 w-full max-w-xs">
+                    {Object.values(PEOPLE).map(p => (
+                        <button
+                            key={p.key}
+                            onClick={() => onPick(p.key)}
+                            className="sticker-lg rounded-3xl py-6 px-4 font-black text-xl flex items-center justify-center gap-3 active:translate-y-1 transition-transform"
+                            style={{ backgroundColor: '#FFFDF6', color: p.color }}
+                        >
+                            <span className="text-3xl">{p.emoji}</span> 我係{p.name}
+                        </button>
+                    ))}
+                </div>
+                <p className="text-[10px] opacity-40 font-bold mt-8">揀咗之後會記住你，下次唔使再揀</p>
+            </div>
+        );
+
+        // ============ 加到主畫面教學 ============
+        const HomeScreenGuide = ({ onClose }) => (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-5" onClick={onClose}>
+                <div className="bg-[#FFFDF6] sticker-lg rounded-3xl p-6 max-w-sm w-full animate-pop" onClick={e => e.stopPropagation()}>
+                    <h3 className="font-black text-lg mb-1">📲 加到主畫面</h3>
+                    <p className="text-xs opacity-60 font-bold mb-4">加咗之後一撳即開，同真 App 一樣，唔使再開瀏覽器打網址！</p>
+                    <div className="text-sm space-y-3 font-bold">
+                        <div className="bg-white sticker rounded-xl p-3">
+                            <div className="text-xs opacity-50 mb-1">iPhone (Safari)</div>
+                            撳底部「分享」按鈕 <span className="inline-block">⬆️</span> → 向下捲 → 「加入主畫面」
+                        </div>
+                        <div className="bg-white sticker rounded-xl p-3">
+                            <div className="text-xs opacity-50 mb-1">Android (Chrome)</div>
+                            撳右上「⋮」選單 → 「加到主畫面」／「安裝應用程式」
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="w-full mt-5 py-3 sticker rounded-xl font-black bg-[var(--soft)] active:translate-y-0.5">知道啦！</button>
+                </div>
+            </div>
+        );
+
+        function App() {
+            const [identity, setIdentity] = useState(() => {
+                try { return localStorage.getItem('lucky_pig_identity') || null; } catch(e) { return null; }
+            });
+            const [view, setView] = useState('entry');
+            const [user, setUser] = useState(null);
+            const [syncStatus, setSyncStatus] = useState('connecting');
+            const [errorMsg, setErrorMsg] = useState('');
+            const [saveState, setSaveState] = useState('idle');
+            const [fbReady, setFbReady] = useState(!!window.__firebaseReady);
+            const [showGuide, setShowGuide] = useState(false);
+            const [tipDismissed, setTipDismissed] = useState(() => {
+                try { return localStorage.getItem('lucky_pig_tip_dismissed') === '1'; } catch(e) { return false; }
+            });
+
+            const [cloudEntries, setCloudEntries] = useState({});
+            const [localMine, setLocalMine] = useState(['', '', '']);
+            const [mineChanged, setMineChanged] = useState(false);
+
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [selectedDate, setSelectedDate] = useState(todayStr());
+
+            const me = identity ? PEOPLE[identity] : null;
+            const partnerKey = identity === 'shushu' ? 'gaogao' : 'shushu';
+            const partner = PEOPLE[partnerKey];
+
+            const saveTimer = useRef(null);
+            const pendingRef = useRef(null); // { date, who, arr }
+
+            // ---- 主題色跟「顯示緊嘅月份」轉：月曆睇邊個月就邊個月嘅色，寫嘢頁跟選中日期嘅月份 ----
+            useEffect(() => {
+                const mi = view === 'calendar'
+                    ? currentDate.getMonth()
+                    : (parseInt(selectedDate.slice(5, 7), 10) - 1);
+                if (window.__applyMonthTheme && mi >= 0 && mi <= 11) window.__applyMonthTheme(mi);
+            }, [view, currentDate, selectedDate, identity]);
+
+            // ---- Firebase ready ----
+            useEffect(() => {
+                if (window.__firebaseReady) { setFbReady(true); return; }
+                const h = () => setFbReady(true);
+                window.addEventListener('firebase-ready', h);
+                return () => window.removeEventListener('firebase-ready', h);
+            }, []);
+
+            useEffect(() => {
+                if (!fbReady) return;
+                const { auth, signInAnonymously, onAuthStateChanged } = window.__firebase;
+                signInAnonymously(auth).catch(err => { setSyncStatus('error'); setErrorMsg("登入失敗: " + err.message); });
+                const unsub = onAuthStateChanged(auth, (u) => { setUser(u); if (u) setSyncStatus('linked'); });
+                return () => unsub();
+            }, [fbReady]);
+
+            useEffect(() => {
+                if (!user || !fbReady) return;
+                const { db, doc, onSnapshot } = window.__firebase;
+                const unsubscribe = onSnapshot(doc(db, 'shared_diaries', ROOM_ID), (snap) => {
+                    setCloudEntries(snap.exists() ? (snap.data()?.entries || {}) : {});
+                }, (err) => { setSyncStatus('error'); setErrorMsg("讀取權限錯誤: " + err.message); });
+                return () => unsubscribe();
+            }, [user, fbReady]);
+
+            // ---- 即時寫入（畀 flush 用）----
+            const writeNow = async (date, who, arr) => {
+                if (!user || !fbReady) return;
+                const { db, doc, setDoc } = window.__firebase;
+                try {
+                    setSaveState('saving');
+                    await setDoc(doc(db, 'shared_diaries', ROOM_ID),
+                        { entries: { [date]: { [who]: getSafeArray(arr) } } }, { merge: true });
+                    setSaveState('saved');
+                    setTimeout(() => setSaveState('idle'), 1800);
+                } catch (e) {
+                    setSyncStatus('error'); setErrorMsg("寫入失敗: " + e.message); setSaveState('idle');
+                }
+            };
+
+            const flushPending = () => {
+                if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+                if (pendingRef.current) {
+                    const p = pendingRef.current;
+                    pendingRef.current = null;
+                    setMineChanged(false);
+                    writeNow(p.date, p.who, p.arr);
+                }
+            };
+
+            // ---- 自動儲存（1.2 秒 debounce）----
+            const handleTyping = (i, val) => {
+                const next = [...localMine];
+                next[i] = val;
+                setLocalMine(next);
+                setMineChanged(true);
+                pendingRef.current = { date: selectedDate, who: identity, arr: next };
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                setSaveState('typing');
+                saveTimer.current = setTimeout(() => {
+                    if (pendingRef.current) {
+                        const p = pendingRef.current;
+                        pendingRef.current = null;
+                        setMineChanged(false);
+                        writeNow(p.date, p.who, p.arr);
+                    }
+                }, 1200);
+            };
+
+            // ---- 切換日期／身份時載入資料 ----
+            useEffect(() => {
+                if (!selectedDate || !identity) return;
+                setMineChanged(false);
+                const dayData = cloudEntries[selectedDate] || {};
+                setLocalMine(getSafeArray(dayData[identity]));
+            }, [selectedDate, identity]);
+
+            // ---- 雲端更新時，自己冇打緊字先同步落嚟 ----
+            useEffect(() => {
+                if (!selectedDate || !identity || mineChanged) return;
+                const dayData = cloudEntries[selectedDate] || {};
+                setLocalMine(getSafeArray(dayData[identity]));
+            }, [cloudEntries]);
+
+            // ---- 導航（切走之前 flush 未儲存嘅嘢）----
+            const goCalendar = () => { flushPending(); setView('calendar'); };
+            const openDate = (ds) => { flushPending(); setSelectedDate(ds); setView('entry'); };
+            const switchIdentity = () => {
+                flushPending();
+                try { localStorage.removeItem('lucky_pig_identity'); } catch(e) {}
+                setIdentity(null);
+            };
+            const pickIdentity = (key) => {
+                try { localStorage.setItem('lucky_pig_identity', key); } catch(e) {}
+                setIdentity(key);
+                setSelectedDate(todayStr());
+                setView('entry');
+            };
+            const dismissTip = () => {
+                setTipDismissed(true);
+                try { localStorage.setItem('lucky_pig_tip_dismissed', '1'); } catch(e) {}
+            };
+
+            // ---- 衍生資料 ----
+            const myStreak = useMemo(() => identity ? calcStreak(cloudEntries, identity) : 0, [cloudEntries, identity]);
+            const todayData = cloudEntries[todayStr()] || {};
+            const partnerTodayCount = countContent(todayData[partnerKey]);
+            const quote = QUOTES[Math.floor((Date.now() / 86400000)) % QUOTES.length];
+            const isToday = selectedDate === todayStr();
+            const selectedDayData = cloudEntries[selectedDate] || {};
+            const partnerEntries = getSafeArray(selectedDayData[partnerKey]);
+            const partnerHasWritten = hasContent(selectedDayData[partnerKey]);
+
+            if (!identity) {
+                return (<><div className="noise-overlay" /><IdentityPicker onPick={pickIdentity} /></>);
+            }
+
+            return (
+                <div className="min-h-screen p-3 flex justify-center selection:bg-[var(--highlight)] relative">
+                    <div className="noise-overlay" />
+                    {showGuide && <HomeScreenGuide onClose={() => setShowGuide(false)} />}
+                    <div className="w-full max-w-lg hand-drawn-container p-5 flex flex-col min-h-[92vh] relative overflow-hidden">
+
+                        {/* ======= Header ======= */}
+                        <header className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-2">
+                                <button onClick={switchIdentity} title="轉身份"
+                                    className="text-2xl bg-white sticker rounded-full w-11 h-11 flex items-center justify-center active:translate-y-0.5">
+                                    {me.emoji}
+                                </button>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase opacity-40 block tracking-widest text-[#1A1A1A]">LUCKY PIG PIG</span>
+                                    <h1 className="text-lg font-black text-[#1A1A1A] leading-tight">{me.name}嘅小確幸</h1>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5">
+                                <button
+                                    onClick={() => errorMsg && alert(errorMsg)}
+                                    className={`px-2.5 py-1 text-[9px] font-bold rounded-full sticker ${syncStatus === 'linked' ? 'bg-[var(--highlight)]' : syncStatus === 'connecting' ? 'bg-white' : 'bg-red-100'} text-[#1A1A1A]`}
+                                >
+                                    {syncStatus === 'linked' ? '● 同步中' : syncStatus === 'connecting' ? '連線中…' : '連線異常'}
+                                </button>
+                                {myStreak > 0 && (
+                                    <div className="px-2.5 py-1 text-[10px] font-black rounded-full sticker bg-white text-[#1A1A1A]">
+                                        🔥 連續 {myStreak} 日
+                                    </div>
+                                )}
+                            </div>
+                        </header>
+
+                        {/* ======= 加到主畫面提示 ======= */}
+                        {!tipDismissed && (
+                            <div className="mb-4 sticker rounded-2xl bg-[var(--highlight)] px-3 py-2.5 flex items-center gap-2 text-[11px] font-bold animate-fade-in">
+                                <span className="text-base">📲</span>
+                                <button onClick={() => setShowGuide(true)} className="flex-1 text-left underline decoration-dotted">
+                                    加到主畫面，以後一撳即開！
+                                </button>
+                                <button onClick={dismissTip} className="opacity-40 text-sm px-1">✕</button>
+                            </div>
+                        )}
+
+                        <main className="flex-1 overflow-y-auto custom-scroll pr-1">
+                            {view === 'calendar' ? (
+                                /* ======= 月曆 ======= */
+                                <div className="animate-fade-in px-1 text-center">
+                                    <button onClick={() => openDate(todayStr())} className="flex items-center gap-1 text-sm font-bold opacity-60 mb-4 text-[#1A1A1A] hover:opacity-100">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg> 返回今日
+                                    </button>
+                                    <div className="flex justify-between items-center mb-5">
+                                        <div className="text-left">
+                                            <h2 className="text-lg font-black text-[#1A1A1A] leading-tight">{currentDate.getFullYear()} / {currentDate.getMonth()+1}月</h2>
+                                            <span className="text-[10px] font-bold opacity-50">本月色：{MONTH_COLOR_NAMES[currentDate.getMonth()]}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 bg-white sticker rounded-full active:translate-y-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+                                            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 bg-white sticker rounded-full active:translate-y-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+                                        </div>
+                                    </div>
+
+                                    {/* 圖例 */}
+                                    <div className="flex justify-center gap-4 mb-4 text-[10px] font-bold opacity-70">
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{backgroundColor: PEOPLE.shushu.color}}></span>樹樹寫咗</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{backgroundColor: PEOPLE.gaogao.color}}></span>高高寫咗</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-2 mb-6">
+                                        {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-center text-[10px] font-bold opacity-40 text-[#1A1A1A]">{d}</div>)}
+                                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                                            const d = i + 1;
+                                            const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                                            const dd = cloudEntries[ds] || {};
+                                            const sW = hasContent(dd.shushu);
+                                            const gW = hasContent(dd.gaogao);
+                                            const today = ds === todayStr();
+                                            return (
+                                                <button key={d} onClick={() => openDate(ds)}
+                                                    className={`aspect-square rounded-xl sticker font-bold text-sm active:translate-y-0.5 flex flex-col items-center justify-center gap-0.5 ${today ? 'bg-[var(--highlight)]' : 'bg-white/70'} text-[#1A1A1A]`}
+                                                    style={today ? { borderWidth: '3px' } : {}}
+                                                >
+                                                    <span className="leading-none">{d}</span>
+                                                    <span className="flex gap-0.5 h-1.5">
+                                                        {sW && <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor: PEOPLE.shushu.color}}></span>}
+                                                        {gW && <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor: PEOPLE.gaogao.color}}></span>}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <span className="text-[10px] font-bold opacity-40 italic text-[#1A1A1A]">樹樹與高高專屬同步日記</span>
+                                </div>
+                            ) : (
+                                /* ======= 今日／單日頁 ======= */
+                                <div className="animate-fade-in">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <div className="inline-block bg-white px-2.5 py-1 rounded-lg sticker text-[11px] font-black">
+                                            {isToday ? `今日 · ${selectedDate.replace(/-/g, '.')}` : selectedDate.replace(/-/g, '.')}
+                                        </div>
+                                        <button onClick={goCalendar} className="flex items-center gap-1 text-[11px] font-bold bg-white sticker rounded-lg px-2.5 py-1 active:translate-y-0.5">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                                            月曆
+                                        </button>
+                                    </div>
+
+                                    {/* 每日小語 */}
+                                    {isToday && (
+                                        <div className="text-[11px] font-bold opacity-50 mb-4 italic">{quote}</div>
+                                    )}
+
+                                    {/* 我嘅三件事 */}
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h2 className="text-base font-black text-[#1A1A1A]">{me.emoji} 我今日感恩嘅 3 件事</h2>
+                                        <span className="text-[10px] font-bold opacity-50">
+                                            {saveState === 'typing' ? '輸入中…' : saveState === 'saving' ? '儲存中…' : saveState === 'saved' ? '✓ 已自動儲存' : countContent(localMine) > 0 ? '✓ 已同步' : ''}
+                                        </span>
+                                    </div>
+                                    {[0, 1, 2].map(i => (
+                                        <textarea
+                                            key={`mine-${i}`}
+                                            value={localMine[i]}
+                                            onChange={(e) => handleTyping(i, e.target.value)}
+                                            placeholder={['第一件小確幸～', '仲有咩開心嘢？', '最後一件！'][i]}
+                                            className="w-full bg-white rounded-xl p-3 text-[13px] min-h-[72px] mb-3 textarea-shadow focus:outline-none text-[#1A1A1A]"
+                                        />
+                                    ))}
+
+                                    {/* 對方嘅三件事（唯讀）*/}
+                                    <div className="mt-5 mb-2 flex items-center justify-between">
+                                        <h2 className="text-base font-black" style={{ color: partner.color }}>
+                                            {partner.emoji} {partner.name}{isToday ? '今日' : '嗰日'}寫咗…
+                                        </h2>
+                                        {isToday && (
+                                            <span className="text-[10px] font-bold opacity-60">
+                                                {partnerTodayCount > 0 ? `寫咗 ${partnerTodayCount} 件啦！` : '仲未寫住～'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {partnerHasWritten ? (
+                                        partnerEntries.map((txt, i) => txt.trim() ? (
+                                            <div key={`p-${i}`} className="w-full rounded-xl p-3 text-[13px] mb-2.5 sticker text-[#1A1A1A] bg-white/80"
+                                                style={{ borderColor: partner.color, boxShadow: `2px 2px 0px ${partner.color}` }}>
+                                                {txt}
+                                            </div>
+                                        ) : null)
+                                    ) : (
+                                        <div className="w-full rounded-xl p-4 text-[12px] font-bold text-center sticker bg-white/50 opacity-50 border-dashed" style={{ borderStyle: 'dashed' }}>
+                                            {isToday ? `${partner.name}仲未寫，遲啲再返嚟睇下 👀` : '嗰日冇紀錄'}
+                                        </div>
+                                    )}
+
+                                    <DogGallery />
+                                </div>
+                            )}
+                        </main>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
